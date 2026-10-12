@@ -1,0 +1,1731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Climate Trend Detection — Precipitation Analyzer</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Times New Roman', Times, serif; cursor: none; }
+  body { background: #0A1628; min-height: 100vh; overflow-x: hidden; color: #E2E8F0; position: relative; }
+
+  .cursor-dot {
+    position: fixed; width: 8px; height: 8px;
+    background: #38BDF8; border-radius: 50%;
+    pointer-events: none; z-index: 9999;
+    box-shadow: 0 0 20px #38BDF8, 0 0 40px #38BDF8;
+    transform: translate(-50%, -50%);
+  }
+  .cursor-ring {
+    position: fixed; width: 40px; height: 40px;
+    border: 2px solid rgba(56, 189, 248, 0.5);
+    border-radius: 50%;
+    pointer-events: none; z-index: 9998;
+    transform: translate(-50%, -50%);
+    transition: all 0.3s ease;
+  }
+  .cursor-ring.hover {
+    width: 70px; height: 70px;
+    border-color: rgba(34, 211, 238, 0.9);
+    background: rgba(34, 211, 238, 0.12);
+    box-shadow: 0 0 30px rgba(56, 189, 248, 0.4);
+  }
+  .cursor-ring.click {
+    width: 100px; height: 100px;
+    border-color: rgba(34, 211, 238, 1);
+    background: rgba(34, 211, 238, 0.2);
+    box-shadow: 0 0 60px rgba(56, 189, 248, 0.8);
+  }
+
+  .rain-canvas, .wave-canvas, #trailCanvas {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%; pointer-events: none;
+  }
+  .rain-canvas { z-index: 1; }
+  .wave-canvas { z-index: 2; }
+  #trailCanvas { z-index: 3; }
+
+  .gradient-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: 
+      radial-gradient(circle at 20% 30%, rgba(56,189,248,0.08) 0%, transparent 50%),
+      radial-gradient(circle at 80% 70%, rgba(14,165,233,0.06) 0%, transparent 50%);
+    z-index: 1; pointer-events: none;
+    animation: gradientShift 12s ease-in-out infinite alternate;
+  }
+  @keyframes gradientShift {
+    0% { transform: scale(1) rotate(0deg); opacity: 0.6; }
+    100% { transform: scale(1.15) rotate(2deg); opacity: 1; }
+  }
+  .grid-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background-image: 
+      linear-gradient(rgba(56,189,248,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(56,189,248,0.03) 1px, transparent 1px);
+    background-size: 80px 80px;
+    z-index: 1; pointer-events: none;
+    animation: gridPulse 8s ease-in-out infinite;
+  }
+  @keyframes gridPulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+
+  .page {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    overflow-y: auto; z-index: 10;
+    opacity: 0; visibility: hidden;
+    transform: translateX(100%) scale(0.95);
+    transition: all 0.7s cubic-bezier(0.23, 1, 0.32, 1);
+    padding: 30px 20px;
+  }
+  .page.active { opacity: 1; visibility: visible; transform: translateX(0) scale(1); }
+  .page.exit-left { transform: translateX(-100%) scale(0.95); opacity: 0; }
+
+  .container { max-width: 1300px; margin: 0 auto; position: relative; z-index: 10; }
+
+  .page-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 30px; padding: 20px 25px;
+    background: rgba(15, 23, 42, 0.7);
+    backdrop-filter: blur(20px);
+    border-radius: 18px;
+    border: 1px solid rgba(56,189,248,0.15);
+  }
+  .page-header h2 { font-size: 1.4rem; color: #38BDF8; letter-spacing: 1px; }
+
+  .back-btn {
+    padding: 10px 22px;
+    border: 1px solid rgba(56,189,248,0.3);
+    border-radius: 10px;
+    background: rgba(56,189,248,0.08);
+    color: #38BDF8;
+    font-size: 0.85rem;
+    cursor: none; font-weight: 600;
+    transition: all 0.3s ease;
+  }
+  .back-btn:hover {
+    background: rgba(56,189,248,0.2);
+    transform: translateY(-3px);
+    box-shadow: 0 10px 25px rgba(56,189,248,0.2);
+  }
+
+  .hero { text-align: center; padding: 60px 20px 40px; margin-bottom: 30px; }
+  .brand-badge {
+    display: inline-block; padding: 8px 22px;
+    border-radius: 30px;
+    background: rgba(56,189,248,0.08);
+    border: 1px solid rgba(56,189,248,0.3);
+    font-size: 0.72rem; letter-spacing: 4px;
+    text-transform: uppercase; color: #38BDF8;
+    margin-bottom: 24px;
+    animation: badgeFloat 3s ease-in-out infinite;
+  }
+  @keyframes badgeFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+  }
+  .hero h1 {
+    font-size: 3.5rem; font-weight: 900;
+    background: linear-gradient(90deg, #38BDF8, #0EA5E9, #22D3EE, #38BDF8);
+    background-size: 300% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: shine 5s linear infinite;
+    margin-bottom: 12px;
+    letter-spacing: -1px; line-height: 1.1;
+  }
+  @keyframes shine { to { background-position: 300% center; } }
+  .author-name {
+    font-size: 1.15rem; color: #38BDF8; font-weight: 700;
+    letter-spacing: 3px; margin-bottom: 16px;
+    animation: nameGlow 3s ease-in-out infinite;
+  }
+  @keyframes nameGlow {
+    0%, 100% { text-shadow: 0 0 15px rgba(56,189,248,0.5); }
+    50% { text-shadow: 0 0 35px rgba(56,189,248,0.9), 0 0 60px rgba(14,165,233,0.5); }
+  }
+  .hero .subtitle {
+    font-size: 1rem; color: #94A3B8;
+    letter-spacing: 2px; margin-bottom: 12px;
+    font-style: italic;
+  }
+  .hero .description {
+    color: #64748B; font-size: 0.95rem;
+    max-width: 720px; margin: 0 auto; line-height: 1.7;
+  }
+
+  .section-title {
+    font-size: 1.4rem; color: #E2E8F0;
+    margin: 40px 0 20px 0; padding-bottom: 12px;
+    border-bottom: 1px solid rgba(56,189,248,0.15);
+    display: flex; align-items: center;
+  }
+  .section-title::before {
+    content: ''; display: inline-block;
+    width: 5px; height: 24px;
+    background: linear-gradient(180deg, #38BDF8, #22D3EE);
+    margin-right: 14px; border-radius: 3px;
+    box-shadow: 0 0 12px rgba(56,189,248,0.5);
+  }
+
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px; margin-bottom: 40px;
+  }
+  .feature-card {
+    background: rgba(15, 23, 42, 0.7);
+    backdrop-filter: blur(20px);
+    border-radius: 14px;
+    padding: 24px;
+    border: 1px solid rgba(56,189,248,0.15);
+    transition: all 0.4s ease;
+    cursor: none;
+  }
+  .feature-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 20px 40px rgba(0,0,0,0.4), 0 0 30px rgba(56,189,248,0.15);
+    border-color: rgba(56,189,248,0.4);
+  }
+  .feature-card h4 {
+    font-size: 1.05rem; color: #38BDF8;
+    margin-bottom: 10px; letter-spacing: 0.5px;
+  }
+  .feature-card p {
+    font-size: 0.88rem; color: #94A3B8; line-height: 1.6;
+  }
+
+  .input-panel {
+    background: rgba(15, 23, 42, 0.7);
+    backdrop-filter: blur(20px);
+    border-radius: 16px;
+    padding: 28px;
+    border: 1px solid rgba(56,189,248,0.15);
+    margin-bottom: 24px;
+  }
+  .input-panel h3 {
+    font-size: 1rem; color: #38BDF8;
+    margin-bottom: 20px; letter-spacing: 1.5px;
+    text-transform: uppercase;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .input-panel h3::before {
+    content: ''; width: 4px; height: 18px;
+    background: linear-gradient(180deg, #38BDF8, #22D3EE);
+    border-radius: 2px;
+  }
+  .input-row {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 20px; margin-bottom: 16px;
+  }
+  label {
+    display: block; font-size: 0.78rem;
+    color: #94A3B8; margin-bottom: 8px;
+    text-transform: uppercase; letter-spacing: 1px;
+    font-weight: 600;
+  }
+  input, select, textarea {
+    width: 100%; padding: 12px 16px;
+    border-radius: 10px;
+    border: 1px solid rgba(56,189,248,0.2);
+    background: rgba(0, 0, 0, 0.4);
+    color: #E2E8F0; font-size: 0.95rem;
+    font-family: 'Times New Roman', serif;
+    outline: none; cursor: none;
+    transition: all 0.3s ease;
+  }
+  input:focus, select:focus, textarea:focus {
+    border-color: #38BDF8;
+    box-shadow: 0 0 20px rgba(56,189,248,0.3);
+    background: rgba(56,189,248,0.05);
+  }
+  textarea {
+    min-height: 180px;
+    resize: vertical;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    line-height: 1.7;
+  }
+
+  .upload-box {
+    border: 2px dashed rgba(56,189,248,0.4);
+    border-radius: 14px;
+    padding: 40px 20px;
+    text-align: center;
+    background: rgba(56,189,248,0.03);
+    transition: all 0.3s ease;
+    cursor: none;
+    margin-bottom: 20px;
+  }
+  .upload-box:hover {
+    border-color: #38BDF8;
+    background: rgba(56,189,248,0.08);
+    box-shadow: 0 0 30px rgba(56,189,248,0.15);
+  }
+  .upload-box .upload-icon { font-size: 2.5rem; margin-bottom: 10px; }
+  .upload-box p { color: #94A3B8; font-size: 0.9rem; margin-bottom: 15px; }
+  .upload-box input[type="file"] { display: none; }
+
+  .station-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+    background: rgba(0,0,0,0.3);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .station-table th {
+    background: rgba(56,189,248,0.15);
+    color: #38BDF8;
+    padding: 12px;
+    text-align: left;
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .station-table td {
+    padding: 12px;
+    border-bottom: 1px solid rgba(56,189,248,0.08);
+    color: #E2E8F0;
+    font-size: 0.9rem;
+  }
+  .station-table tr:hover td {
+    background: rgba(56,189,248,0.05);
+  }
+
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 18px; margin-bottom: 30px;
+  }
+  .summary-card {
+    background: rgba(15, 23, 42, 0.7);
+    backdrop-filter: blur(20px);
+    border-radius: 14px;
+    padding: 20px;
+    border: 1px solid rgba(56,189,248,0.15);
+    text-align: center;
+    transition: all 0.4s ease;
+  }
+  .summary-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 20px 40px rgba(0,0,0,0.4), 0 0 30px rgba(56,189,248,0.15);
+    border-color: rgba(56,189,248,0.4);
+  }
+  .summary-label {
+    font-size: 0.72rem; color: #94A3B8;
+    text-transform: uppercase; letter-spacing: 1px;
+    margin-bottom: 10px;
+  }
+  .summary-value {
+    font-size: 1.6rem; font-weight: 800;
+    color: #38BDF8;
+    font-family: 'Courier New', monospace;
+  }
+  .summary-value.good { color: #10B981; }
+  .summary-value.bad { color: #EF4444; }
+  .summary-value.warn { color: #F59E0B; }
+  .summary-unit {
+    font-size: 0.75rem; color: #64748B; margin-top: 4px;
+  }
+
+  .canvas-wrapper {
+    background: rgba(5, 10, 20, 0.8);
+    backdrop-filter: blur(15px);
+    border-radius: 16px;
+    padding: 20px;
+    border: 1px solid rgba(56,189,248,0.2);
+    margin-bottom: 24px;
+  }
+  canvas.chart-canvas {
+    width: 100%; height: auto;
+    border-radius: 10px; display: block;
+  }
+
+  .formula-box {
+    background: rgba(34, 211, 238, 0.05);
+    border-left: 4px solid #22D3EE;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 24px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.95rem;
+    color: #38BDF8;
+    line-height: 1.7;
+  }
+  .formula-box .formula-label {
+    font-family: 'Times New Roman', serif;
+    color: #94A3B8;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+
+  .info-box {
+    background: rgba(34, 211, 238, 0.08);
+    border-left: 4px solid #22D3EE;
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+    color: #CBD5E1;
+    font-size: 0.92rem;
+    line-height: 1.7;
+  }
+  .info-box strong { color: #38BDF8; }
+  .info-box.warning {
+    background: rgba(245, 158, 11, 0.08);
+    border-left-color: #F59E0B;
+  }
+  .info-box.warning strong { color: #F59E0B; }
+  .info-box.success {
+    background: rgba(16, 185, 129, 0.08);
+    border-left-color: #10B981;
+  }
+  .info-box.success strong { color: #10B981; }
+  .info-box.danger {
+    background: rgba(239, 68, 68, 0.08);
+    border-left-color: #EF4444;
+  }
+  .info-box.danger strong { color: #EF4444; }
+
+  .liquid-btn {
+    position: relative; display: inline-block;
+    padding: 14px 36px; border: none;
+    border-radius: 50px;
+    background: linear-gradient(135deg, #38BDF8, #0EA5E9, #22D3EE);
+    background-size: 300% 300%;
+    color: #0A1628; font-size: 0.9rem;
+    font-weight: 800; letter-spacing: 1.5px;
+    text-transform: uppercase; cursor: none;
+    overflow: hidden;
+    transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+    box-shadow: 0 10px 30px rgba(56, 189, 248, 0.3), inset 0 2px 8px rgba(255, 255, 255, 0.3);
+    animation: liquidFlow 4s ease infinite;
+    z-index: 1;
+  }
+  @keyframes liquidFlow {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+  .liquid-btn::before {
+    content: '';
+    position: absolute; top: -50%; left: -50%;
+    width: 200%; height: 200%;
+    background: radial-gradient(circle, rgba(255,255,255,0.4) 0%, transparent 60%);
+    opacity: 0;
+    transition: opacity 0.5s ease, transform 0.6s ease;
+    transform: scale(0);
+    border-radius: 50%; z-index: -1;
+  }
+  .liquid-btn:hover::before {
+    opacity: 1; transform: scale(1.5);
+  }
+  .liquid-btn:hover {
+    transform: translateY(-5px) scale(1.05);
+    box-shadow: 0 20px 50px rgba(56, 189, 248, 0.5), 0 0 80px rgba(34, 211, 238, 0.3);
+  }
+
+  .footer {
+    text-align: center; padding: 50px 20px 30px;
+    color: #475569; font-size: 0.85rem;
+    letter-spacing: 1px; font-style: italic;
+    border-top: 1px solid rgba(56,189,248,0.1);
+    margin-top: 60px;
+  }
+  .footer span { color: #38BDF8; font-weight: 600; }
+
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-track { background: #0A1628; }
+  ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, #38BDF8, #22D3EE); border-radius: 10px; }
+
+  @media (max-width: 700px) {
+    .hero h1 { font-size: 2.2rem; }
+    .input-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="cursor-dot" id="cursorDot"></div>
+<div class="cursor-ring" id="cursorRing"></div>
+<canvas id="rainCanvas" class="rain-canvas"></canvas>
+<canvas id="waveCanvas" class="wave-canvas"></canvas>
+<canvas id="trailCanvas"></canvas>
+<div class="gradient-overlay"></div>
+<div class="grid-overlay"></div>
+
+<!-- ═══ PAGE 1: DASHBOARD ═══ -->
+<div class="page active" id="pageDashboard">
+  <div class="container">
+    <div class="page-header">
+      <h2>Climate Trend Detection</h2>
+      <button class="back-btn" onclick="alert('Back — merge with main index.html')">← Back</button>
+    </div>
+
+    <div class="hero">
+      <div class="brand-badge">Module 6 — Mann-Kendall Test</div>
+      <h1>Climate Trend Detection</h1>
+      <div class="author-name">by Junaid Ali</div>
+      <p class="subtitle">Mann-Kendall Trend Test & Sen's Slope Estimator</p>
+      <p class="description">
+        Detect statistically significant trends in your rainfall record using the non-parametric 
+        Mann-Kendall test — the standard method in climate science for identifying monotonic 
+        trends without assuming any distribution.
+      </p>
+    </div>
+
+    <div class="section-title">What This Module Does</div>
+    <div class="features-grid">
+      <div class="feature-card">
+        <h4>Mann-Kendall Test</h4>
+        <p>Non-parametric test for monotonic trends — no assumption of normal distribution.</p>
+      </div>
+      <div class="feature-card">
+        <h4>Sen's Slope</h4>
+        <p>Robust estimate of trend magnitude (mm/year) with 95% confidence interval.</p>
+      </div>
+      <div class="feature-card">
+        <h4>Statistical Significance</h4>
+        <p>Z-statistic and p-value to determine if the trend is statistically significant.</p>
+      </div>
+      <div class="feature-card">
+        <h4>Trend Visualization</h4>
+        <p>Time series plot with fitted trend line and confidence band overlay.</p>
+      </div>
+    </div>
+
+    <div style="text-align: center; margin-top: 40px;">
+      <button class="liquid-btn" onclick="goToPage('pageInput')">
+        Start Analysis →
+      </button>
+    </div>
+
+    <div class="footer">
+      Developed by <span>Junaid Ali</span> · Civil Engineering Research
+    </div>
+  </div>
+</div>
+
+<!-- ═══ PAGE 2: INPUT ═══ -->
+<div class="page" id="pageInput">
+  <div class="container">
+    <div class="page-header">
+      <h2>Climate Trend Detection — Input</h2>
+      <button class="back-btn" onclick="goToPage('pageDashboard')">← Back</button>
+    </div>
+
+    <div class="info-box">
+      <strong>What data do you need?</strong> Annual rainfall totals (or any other rainfall series) 
+      with at least 10 years of record. Enter <strong>year, rainfall</strong> for each year 
+      (one value per year — each year must appear only once).
+    </div>
+
+    <div class="input-panel">
+      <h3>Option 1: Upload CSV File</h3>
+      <p style="font-size: 0.88rem; color: #94A3B8; margin-bottom: 20px;">
+        CSV format: <strong>year, rainfall</strong>
+      </p>
+      <div class="upload-box" onclick="document.getElementById('csvFile').click()">
+        <div class="upload-icon">📁</div>
+        <p>Click to upload CSV file</p>
+        <p style="font-size: 0.78rem; color: #64748B;">Required: year, rainfall</p>
+        <input type="file" id="csvFile" accept=".csv" onchange="handleCsvUpload(event)">
+      </div>
+      <div id="csvStatus" style="display: none; padding: 12px; background: rgba(34,211,238,0.1); border-radius: 8px; border-left: 3px solid #22D3EE; margin-top: 15px;">
+        <span style="color: #22D3EE; font-size: 0.9rem;">✅ CSV loaded: <span id="csvFileName"></span></span>
+      </div>
+    </div>
+
+    <div class="input-panel">
+      <h3>Option 2: Manual Entry</h3>
+      <p style="font-size: 0.88rem; color: #94A3B8; margin-bottom: 20px;">
+        Format: <strong>year, rainfall</strong> — one row per year.
+      </p>
+      <textarea id="manualData" placeholder="1990, 850&#10;1991, 920&#10;1992, 780"></textarea>
+      <div style="display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap;">
+        <button class="liquid-btn" style="padding: 10px 24px; font-size: 0.82rem;" onclick="loadDemoData()">
+          Load Demo Data
+        </button>
+        <button class="liquid-btn" style="padding: 10px 24px; font-size: 0.82rem; background: linear-gradient(135deg, #EF4444, #DC2626);" onclick="document.getElementById('manualData').value = ''">
+          Clear
+        </button>
+      </div>
+    </div>
+
+    <div class="input-panel">
+      <h3>Analysis Settings</h3>
+      <div class="input-row" style="grid-template-columns: 1fr;">
+        <div>
+          <label>Significance Level (α)</label>
+          <select id="alphaLevel">
+            <option value="0.05">5% (α = 0.05) — Standard</option>
+            <option value="0.10">10% (α = 0.10) — Relaxed</option>
+            <option value="0.01">1% (α = 0.01) — Strict</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div style="text-align: center; margin-top: 30px;">
+      <button class="liquid-btn" onclick="runAnalysis()">
+        Run Analysis →
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ PAGE 3: RESULTS ═══ -->
+<div class="page" id="pageResults">
+  <div class="container">
+    <div class="page-header">
+      <h2>Climate Trend Detection — Results</h2>
+      <button class="back-btn" onclick="goToPage('pageInput')">← Back</button>
+    </div>
+
+    <div id="trendVerdict"></div>
+
+    <div class="summary-grid" id="summary"></div>
+
+    <div class="section-title">Trend Visualization</div>
+    <div class="canvas-wrapper">
+      <canvas id="trendCanvas" class="chart-canvas" width="1100" height="600"></canvas>
+    </div>
+
+    <div class="section-title">Mann-Kendall Test — Calculation</div>
+    <div class="formula-box" id="formulaBox"></div>
+
+    <div class="section-title">Trend Statistics</div>
+    <div class="input-panel">
+      <div style="overflow-x: auto;">
+        <table class="station-table" id="statsTable">
+          <thead>
+            <tr>
+              <th>Parameter</th>
+              <th>Value</th>
+              <th>Interpretation</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="section-title">Annual Data with Running Mean</div>
+    <div class="input-panel">
+      <div style="overflow-x: auto;">
+        <table class="station-table" id="dataTable">
+          <thead>
+            <tr>
+              <th>Year</th>
+              <th>Rainfall (mm)</th>
+              <th>Deviation from Mean</th>
+              <th>5-Year Running Mean</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div style="display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 14px; margin-top: 30px;">
+      <button class="liquid-btn" onclick="exportExcel()" style="margin-right: 0; background: linear-gradient(135deg, #10B981, #059669);">
+        Export Excel (Graph + Data)
+      </button>
+      <button class="liquid-btn" onclick="exportGraphsZip()" style="margin-right: 0; background: linear-gradient(135deg, #A78BFA, #7C3AED);">
+        Graph (PNG ZIP)
+      </button>
+      <button class="liquid-btn" onclick="saveResults()" style="margin-right: 0;">
+        Save Report (TXT)
+      </button>
+      <button class="liquid-btn" onclick="saveCSV()" style="margin-right: 0;">
+        Save Data (CSV)
+      </button>
+      <button class="liquid-btn" onclick="goToPage('pageDashboard')" style="background: linear-gradient(135deg, #0EA5E9, #38BDF8);">
+        Back to Dashboard
+      </button>
+    </div>
+
+    <div class="footer">
+      Developed by <span>Junaid Ali</span> · Civil Engineering Research
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══ SAFE EVENT LISTENERS ═══ */
+document.addEventListener('DOMContentLoaded', function() {
+  
+  /* ═══ CURSOR + TRAIL ═══ */
+  const cursorDot = document.getElementById('cursorDot');
+  const cursorRing = document.getElementById('cursorRing');
+  const trailCanvas = document.getElementById('trailCanvas');
+  const tCtx = trailCanvas.getContext('2d');
+  let trailParticles = [];
+
+  function resizeTrail() {
+    trailCanvas.width = window.innerWidth;
+    trailCanvas.height = window.innerHeight;
+  }
+  resizeTrail();
+  window.addEventListener('resize', resizeTrail);
+
+  document.addEventListener('mousemove', (e) => {
+    cursorDot.style.left = e.clientX + 'px';
+    cursorDot.style.top = e.clientY + 'px';
+    cursorRing.style.left = e.clientX + 'px';
+    cursorRing.style.top = e.clientY + 'px';
+    for (let i = 0; i < 2; i++) {
+      trailParticles.push({
+        x: e.clientX, y: e.clientY,
+        vx: (Math.random() - 0.5) * 3,
+        vy: (Math.random() - 0.5) * 3,
+        life: 1, size: Math.random() * 4 + 2,
+        color: Math.random() > 0.5 ? '56, 189, 248' : '34, 211, 238'
+      });
+    }
+  });
+
+  document.addEventListener('mousedown', (e) => {
+    cursorRing.classList.add('click');
+    for (let i = 0; i < 15; i++) {
+      trailParticles.push({
+        x: e.clientX,
+        y: e.clientY,
+        vx: (Math.random() - 0.5) * 8,
+        vy: (Math.random() - 0.5) * 8,
+        life: 1, size: Math.random() * 6 + 3,
+        color: '34, 211, 238'
+      });
+    }
+  });
+  document.addEventListener('mouseup', () => cursorRing.classList.remove('click'));
+
+  document.querySelectorAll('button, .liquid-btn, input, .upload-box, .back-btn, .feature-card, textarea, select').forEach(el => {
+    el.addEventListener('mouseenter', () => cursorRing.classList.add('hover'));
+    el.addEventListener('mouseleave', () => cursorRing.classList.remove('hover'));
+  });
+
+  function animateTrail() {
+    tCtx.clearRect(0, 0, trailCanvas.width, trailCanvas.height);
+    trailParticles = trailParticles.filter(p => p.life > 0);
+    trailParticles.forEach(p => {
+      p.x += p.vx; p.y += p.vy;
+      p.life -= 0.025; p.size *= 0.97;
+      tCtx.beginPath();
+      tCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      tCtx.fillStyle = `rgba(${p.color}, ${p.life * 0.8})`;
+      tCtx.shadowColor = `rgba(${p.color}, ${p.life})`;
+      tCtx.shadowBlur = 15;
+      tCtx.fill();
+      tCtx.shadowBlur = 0;
+    });
+    requestAnimationFrame(animateTrail);
+  }
+  animateTrail();
+
+  /* ═══ RAIN ═══ */
+  const rainCanvas = document.getElementById('rainCanvas');
+  const rCtx = rainCanvas.getContext('2d');
+  let raindrops = [];
+  function resizeRain() {
+    rainCanvas.width = window.innerWidth;
+    rainCanvas.height = window.innerHeight;
+  }
+  resizeRain();
+  window.addEventListener('resize', resizeRain);
+  class Raindrop {
+    constructor() { this.reset(); }
+    reset() {
+      this.x = Math.random() * rainCanvas.width;
+      this.y = Math.random() * -rainCanvas.height;
+      this.length = Math.random() * 20 + 10;
+      this.speed = Math.random() * 3 + 2;
+      this.opacity = Math.random() * 0.3 + 0.15;
+      this.width = Math.random() * 1.5 + 0.5;
+    }
+    update() { this.y += this.speed; if (this.y > rainCanvas.height + 20) this.reset(); }
+    draw() {
+      rCtx.beginPath();
+      rCtx.strokeStyle = `rgba(56, 189, 248, ${this.opacity})`;
+      rCtx.lineWidth = this.width;
+      rCtx.lineCap = 'round';
+      rCtx.moveTo(this.x, this.y);
+      rCtx.lineTo(this.x - 1, this.y + this.length);
+      rCtx.stroke();
+    }
+  }
+  for (let i = 0; i < 120; i++) raindrops.push(new Raindrop());
+  function animateRain() {
+    rCtx.clearRect(0, 0, rainCanvas.width, rainCanvas.height);
+    raindrops.forEach(r => { r.update(); r.draw(); });
+    requestAnimationFrame(animateRain);
+  }
+  animateRain();
+
+  /* ═══ WAVES ═══ */
+  const waveCanvas = document.getElementById('waveCanvas');
+  const wCtx = waveCanvas.getContext('2d');
+  let waveOffset = 0;
+  function resizeWave() {
+    waveCanvas.width = window.innerWidth;
+    waveCanvas.height = window.innerHeight;
+  }
+  resizeWave();
+  window.addEventListener('resize', resizeWave);
+  function drawWave(yOffset, amplitude, wavelength, color, speed, opacity) {
+    wCtx.beginPath();
+    wCtx.moveTo(0, waveCanvas.height);
+    for (let x = 0; x <= waveCanvas.width; x += 5) {
+      const y = yOffset + Math.sin((x + waveOffset * speed) / wavelength) * amplitude;
+      wCtx.lineTo(x, y);
+    }
+    wCtx.lineTo(waveCanvas.width, waveCanvas.height);
+    wCtx.closePath();
+    wCtx.fillStyle = color;
+    wCtx.globalAlpha = opacity;
+    wCtx.fill();
+    wCtx.globalAlpha = 1;
+  }
+  function animateWaves() {
+    wCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
+    drawWave(waveCanvas.height - 60, 25, 200, '#0EA5E9', 1, 0.15);
+    drawWave(waveCanvas.height - 40, 30, 250, '#38BDF8', 0.8, 0.12);
+    drawWave(waveCanvas.height - 20, 20, 180, '#22D3EE', 1.2, 0.10);
+    waveOffset += 1;
+    requestAnimationFrame(animateWaves);
+  }
+  animateWaves();
+});
+
+/* ═══ NAVIGATION ═══ */
+let currentPage = 'pageDashboard';
+let navLocked = false;
+function goToPage(pageId) {
+  if (navLocked || pageId === currentPage) return;   // prevent double-click glitches
+  navLocked = true;
+  const current = document.getElementById(currentPage);
+  const next = document.getElementById(pageId);
+  current.classList.remove('active');
+  current.classList.add('exit-left');
+  setTimeout(() => {
+    current.classList.remove('exit-left');
+    next.classList.add('active');
+    currentPage = pageId;
+    next.scrollTop = 0;
+    navLocked = false;
+  }, 500);
+}
+
+/* ═══ CSV UPLOAD ═══ */
+function handleCsvUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    document.getElementById('manualData').value = e.target.result;
+    document.getElementById('csvStatus').style.display = 'block';
+    document.getElementById('csvFileName').textContent = file.name;
+  };
+  reader.readAsText(file);
+  event.target.value = '';   // allow re-uploading the same file
+}
+
+function loadDemoData() {
+  // 40 years with a slight upward trend
+  const demo = `1984, 720
+1985, 810
+1986, 760
+1987, 890
+1988, 850
+1989, 920
+1990, 850
+1991, 920
+1992, 780
+1993, 890
+1994, 1050
+1995, 940
+1996, 820
+1997, 1100
+1998, 1250
+1999, 1080
+2000, 1150
+2001, 1220
+2002, 1080
+2003, 1300
+2004, 1350
+2005, 1200
+2006, 1280
+2007, 1420
+2008, 1350
+2009, 1500
+2010, 1450
+2011, 1380
+2012, 1550
+2013, 1620
+2014, 1480
+2015, 1650
+2016, 1700
+2017, 1580
+2018, 1750
+2019, 1680
+2020, 1850
+2021, 1720
+2022, 1900
+2023, 1950`;
+  document.getElementById('manualData').value = demo;
+}
+
+/* ═══ PARSE DATA ═══ */
+function parseData() {
+  const text = document.getElementById('manualData').value.trim();
+  if (!text) {
+    alert('Please enter or upload data first.');
+    return null;
+  }
+  
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  const data = [];
+  
+  for (const line of lines) {
+    const parts = line.split(/[,;\t\s]+/).map(p => p.trim()).filter(p => p !== '');
+    if (parts.length < 2) continue;
+    const year = parseInt(parts[0], 10);
+    const rainfall = parseFloat(parts[1]);
+    if (isNaN(year) || isNaN(rainfall)) continue;   // skips header rows too
+    if (rainfall < 0) {
+      alert(`Invalid data: negative rainfall (${rainfall}) found for year ${year}.`);
+      return null;
+    }
+    data.push({ year, rainfall });
+  }
+  
+  data.sort((a, b) => a.year - b.year);
+
+  // Each year must be unique (otherwise Sen's slope divides by zero)
+  const dup = data.find((d, i) => i > 0 && d.year === data[i - 1].year);
+  if (dup) {
+    alert(`Duplicate year found (${dup.year}). Please provide exactly one value per year (e.g. annual totals).`);
+    return null;
+  }
+  return data;
+}
+
+/* ═══ HELPERS ═══ */
+function zCritical(alpha) {
+  if (alpha <= 0.011) return 2.5758;
+  if (alpha <= 0.051) return 1.9600;
+  return 1.6449;
+}
+function pText(p) { return p < 0.0001 ? '< 0.0001' : '= ' + p.toFixed(4); }
+function fmtP(p)  { return p < 0.0001 ? '< 0.0001' : p.toFixed(4); }
+
+/* ═══ MANN-KENDALL TEST ═══ */
+function mannKendall(data) {
+  const n = data.length;
+  const x = data.map(d => d.rainfall);
+  
+  // Step 1: Compute S statistic
+  let S = 0;
+  for (let i = 0; i < n - 1; i++) {
+    for (let j = i + 1; j < n; j++) {
+      S += Math.sign(x[j] - x[i]);
+    }
+  }
+  
+  // Step 2: Compute variance of S (with tie correction)
+  const counts = {};
+  x.forEach(v => counts[v] = (counts[v] || 0) + 1);
+  let tieSum = 0;
+  Object.values(counts).forEach(t => {
+    if (t > 1) tieSum += t * (t - 1) * (2 * t + 5);
+  });
+  
+  const varS = (n * (n - 1) * (2 * n + 5) - tieSum) / 18;
+  
+  // Step 3: Compute Z statistic
+  let Z;
+  if (S > 0) Z = (S - 1) / Math.sqrt(varS);
+  else if (S < 0) Z = (S + 1) / Math.sqrt(varS);
+  else Z = 0;
+  
+  // Step 4: Compute p-value (two-tailed)
+  const pValue = Math.min(1, Math.max(0, 2 * (1 - normalCDF(Math.abs(Z)))));
+  
+  return { S, varS, Z, pValue, n };
+}
+
+/* Standard normal CDF approximation */
+function normalCDF(z) {
+  // Abramowitz and Stegun approximation
+  const t = 1 / (1 + 0.2316419 * Math.abs(z));
+  const d = 0.3989422804 * Math.exp(-z * z / 2);
+  const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+  return z > 0 ? 1 - p : p;
+}
+
+/* ═══ SEN'S SLOPE ESTIMATOR ═══ */
+function sensSlope(data, varS) {
+  const n = data.length;
+  const slopes = [];
+  
+  for (let i = 0; i < n - 1; i++) {
+    for (let j = i + 1; j < n; j++) {
+      slopes.push((data[j].rainfall - data[i].rainfall) / (data[j].year - data[i].year));
+    }
+  }
+  
+  slopes.sort((a, b) => a - b);
+  const N = slopes.length;
+  
+  const median = N % 2 === 0
+    ? (slopes[N / 2 - 1] + slopes[N / 2]) / 2
+    : slopes[Math.floor(N / 2)];
+  
+  // 95% confidence interval (Hirsch / Gilbert method)
+  // NOTE: Var(S) must be the Mann-Kendall variance based on n data points
+  // (not on the number of slopes N).
+  const C = 1.96;
+  const M1 = (N - C * Math.sqrt(varS)) / 2;      // lower rank (1-indexed)
+  const M2 = (N + C * Math.sqrt(varS)) / 2 + 1;  // upper rank (1-indexed)
+  const rankValue = (rank) => {
+    const r = Math.min(N - 1, Math.max(0, rank - 1));  // to 0-indexed + clamp
+    const lo = Math.floor(r), hi = Math.ceil(r);
+    return slopes[lo] + (slopes[hi] - slopes[lo]) * (r - lo);   // interpolate
+  };
+  const lowerCI = rankValue(M1);
+  const upperCI = rankValue(M2);
+
+  // Intercept (median of y - slope * x), for drawing the trend line
+  const resid = data.map(d => d.rainfall - median * d.year).sort((a, b) => a - b);
+  const intercept = resid.length % 2 === 0
+    ? (resid[resid.length / 2 - 1] + resid[resid.length / 2]) / 2
+    : resid[Math.floor(resid.length / 2)];
+  
+  return { slope: median, intercept, lowerCI, upperCI, numSlopes: N };
+}
+
+/* ═══ RUN ANALYSIS ═══ */
+let analysisData = null;
+
+function runAnalysis() {
+  const data = parseData();
+  if (!data) return;
+  if (data.length < 10) {
+    alert('Please provide at least 10 years of data for reliable trend analysis.');
+    return;
+  }
+  
+  const alpha = parseFloat(document.getElementById('alphaLevel').value);
+  
+  // Mann-Kendall test
+  const mk = mannKendall(data);
+  
+  // Sen's slope (uses MK variance for CI)
+  const sens = sensSlope(data, mk.varS);
+  
+  // Compute mean for deviation
+  const meanVal = data.reduce((s, d) => s + d.rainfall, 0) / data.length;
+  
+  // 5-year running mean (only where a full 5-year window exists)
+  const runningMeans = data.map((d, i) => {
+    if (i < 4) return null;
+    const win = data.slice(i - 4, i + 1);
+    return win.reduce((s, x) => s + x.rainfall, 0) / 5;
+  });
+  
+  analysisData = { data, mk, sens, meanVal, runningMeans, alpha };
+  
+  // Verdict
+  const isSignificant = mk.pValue < alpha;
+  const trendDirection = sens.slope > 0 ? 'increasing' : sens.slope < 0 ? 'decreasing' : 'flat';
+  let verdictClass, verdictEmoji, verdictText;
+  
+  if (isSignificant) {
+    verdictClass = 'warning';
+    verdictEmoji = sens.slope >= 0 ? '📈' : '📉';
+    const percentPerDecade = (sens.slope * 10 / meanVal * 100).toFixed(1);
+    verdictText = `<strong>Statistically significant ${trendDirection} trend detected</strong> (p ${pText(mk.pValue)} &lt; α = ${alpha}). 
+      Rainfall is changing by <strong>${sens.slope.toFixed(2)} mm/year</strong> 
+      (${sens.slope > 0 ? '+' : ''}${percentPerDecade}% per decade).`;
+  } else {
+    verdictClass = '';
+    verdictEmoji = 'ℹ️';
+    verdictText = `No statistically significant trend detected (p ${pText(mk.pValue)} ≥ α = ${alpha}). 
+      The observed ${trendDirection} tendency of ${sens.slope.toFixed(2)} mm/year could be due to natural variability.`;
+  }
+  
+  document.getElementById('trendVerdict').innerHTML = `
+    <div class="info-box ${verdictClass}" style="font-size: 1rem; padding: 22px 24px;">
+      <div style="font-size: 1.5rem; margin-bottom: 10px;">${verdictEmoji}</div>
+      ${verdictText}
+    </div>
+  `;
+  
+  // Summary cards
+  document.getElementById('summary').innerHTML = `
+    <div class="summary-card">
+      <div class="summary-label">Sen's Slope</div>
+      <div class="summary-value ${sens.slope > 0 ? 'warn' : sens.slope < 0 ? 'good' : ''}">${sens.slope > 0 ? '+' : ''}${sens.slope.toFixed(2)}</div>
+      <div class="summary-unit">mm/year</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">Z-Statistic</div>
+      <div class="summary-value">${mk.Z.toFixed(3)}</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">p-value</div>
+      <div class="summary-value ${isSignificant ? 'warn' : 'good'}">${fmtP(mk.pValue)}</div>
+      <div class="summary-unit">α = ${alpha}</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">Confidence (1 − p)</div>
+      <div class="summary-value">${((1 - mk.pValue) * 100).toFixed(1)}%</div>
+    </div>
+  `;
+  
+  // Formula box
+  document.getElementById('formulaBox').innerHTML = `
+    <div class="formula-label">Mann-Kendall S Statistic</div>
+    S = Σ<sub>i=1</sub><sup>n-1</sup> Σ<sub>j=i+1</sub><sup>n</sup> sign(x<sub>j</sub> − x<sub>i</sub>)<br>
+    S = <strong>${mk.S}</strong>
+    <br><br>
+    <div class="formula-label">Variance of S</div>
+    Var(S) = [n(n−1)(2n+5) − Σt(t−1)(2t+5)] / 18<br>
+    Var(S) = <strong>${mk.varS.toFixed(2)}</strong>
+    <br><br>
+    <div class="formula-label">Z-Statistic</div>
+    Z = (S − 1) / √Var(S)  if S &gt; 0<br>
+    Z = (S + 1) / √Var(S)  if S &lt; 0<br>
+    Z = <strong>${mk.Z.toFixed(4)}</strong>
+    <br><br>
+    <div class="formula-label">Sen's Slope Estimator</div>
+    β = Median[(x<sub>j</sub> − x<sub>i</sub>) / (t<sub>j</sub> − t<sub>i</sub>)] for all i &lt; j<br>
+    β = <strong>${sens.slope.toFixed(4)} mm/year</strong><br>
+    95% CI: [${sens.lowerCI.toFixed(2)}, ${sens.upperCI.toFixed(2)}] mm/year
+  `;
+  
+  // Stats table
+  const zCrit = zCritical(alpha);
+  const statsTbody = document.querySelector('#statsTable tbody');
+  statsTbody.innerHTML = '';
+  const statsData = [
+    { param: 'S Statistic', value: mk.S, interp: mk.S > 0 ? 'Positive (increasing)' : mk.S < 0 ? 'Negative (decreasing)' : 'No trend' },
+    { param: 'Variance of S', value: mk.varS.toFixed(2), interp: 'Test statistic variance' },
+    { param: 'Z Statistic', value: mk.Z.toFixed(4), interp: Math.abs(mk.Z) > zCrit ? `Exceeds critical value (±${zCrit.toFixed(3)})` : `Within critical value (±${zCrit.toFixed(3)})` },
+    { param: 'p-value', value: fmtP(mk.pValue), interp: isSignificant ? 'Significant' : 'Not significant' },
+    { param: 'Significance Level (α)', value: alpha.toFixed(2), interp: 'User-selected' },
+    { param: 'Sen\'s Slope', value: `${sens.slope.toFixed(4)} mm/year`, interp: sens.slope > 0 ? 'Increasing trend' : sens.slope < 0 ? 'Decreasing trend' : 'No change' },
+    { param: '95% CI Lower', value: `${sens.lowerCI.toFixed(2)} mm/year`, interp: 'Lower bound' },
+    { param: '95% CI Upper', value: `${sens.upperCI.toFixed(2)} mm/year`, interp: 'Upper bound' },
+    { param: 'Mean Rainfall', value: `${meanVal.toFixed(2)} mm`, interp: 'Long-term average' },
+    { param: 'Number of Years', value: data.length, interp: 'Sample size' }
+  ];
+  
+  statsData.forEach(s => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="color: #38BDF8; font-weight: 600;">${s.param}</td>
+      <td style="color: #22D3EE; font-family: 'Courier New', monospace; font-weight: 700;">${s.value}</td>
+      <td style="color: #94A3B8; font-size: 0.85rem;">${s.interp}</td>
+    `;
+    statsTbody.appendChild(tr);
+  });
+  
+  // Data table with running mean
+  const dataTbody = document.querySelector('#dataTable tbody');
+  dataTbody.innerHTML = '';
+  data.forEach((d, i) => {
+    const dev = d.rainfall - meanVal;
+    const rm = runningMeans[i];
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${d.year}</td>
+      <td style="color: #38BDF8; font-weight: 600;">${d.rainfall.toFixed(1)}</td>
+      <td style="color: ${dev > 0 ? '#10B981' : dev < 0 ? '#EF4444' : '#94A3B8'};">${dev > 0 ? '+' : ''}${dev.toFixed(1)}</td>
+      <td style="color: #22D3EE;">${rm === null ? '—' : rm.toFixed(1)}</td>
+    `;
+    dataTbody.appendChild(tr);
+  });
+  
+  goToPage('pageResults');
+  setTimeout(() => drawTrendChart(), 600);
+}
+
+/* ═══ DRAW TREND CHART ═══ */
+function drawTrendChart() {
+  if (!analysisData) return;
+  const canvas = document.getElementById('trendCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const pad = 90;
+  ctx.clearRect(0, 0, W, H);
+
+  const bg = ctx.createLinearGradient(0, 0, W, H);
+  bg.addColorStop(0, 'rgba(5, 10, 20, 0.98)');
+  bg.addColorStop(1, 'rgba(10, 20, 35, 0.98)');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.strokeStyle = 'rgba(56, 189, 248, 0.06)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < W; i += 50) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, H); ctx.stroke(); }
+  for (let i = 0; i < H; i += 50) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(W, i); ctx.stroke(); }
+
+  const data = analysisData.data;
+  const minYear = data[0].year;
+  const maxYear = data[data.length - 1].year;
+  const yearRange = maxYear - minYear || 1;
+  const midYear = (minYear + maxYear) / 2;
+
+  // Trend line (Sen's slope + median intercept) and 95% CI band pivoting at the mid-year
+  const tSlope = analysisData.sens.slope;
+  const tIntercept = analysisData.sens.intercept;
+  const centerVal = tIntercept + tSlope * midYear;
+  const trendAt = (yr) => centerVal + tSlope * (yr - midYear);
+  const lowerAt = (yr) => centerVal + analysisData.sens.lowerCI * (yr - midYear);
+  const upperAt = (yr) => centerVal + analysisData.sens.upperCI * (yr - midYear);
+  
+  // Y range includes data and band ends so nothing is clipped
+  const allVals = data.map(d => d.rainfall)
+    .concat([lowerAt(minYear), upperAt(minYear), lowerAt(maxYear), upperAt(maxYear)]);
+  const maxVal = Math.max(...allVals) * 1.05;
+  const minVal = Math.max(0, Math.min(...allVals) * 0.9);
+
+  const ox = pad;
+  const oy = H - pad - 30;
+  const plotW = W - 2 * pad;
+  const plotH = H - 2 * pad - 40;
+
+  const sx = (year) => ox + ((year - minYear) / yearRange) * plotW;
+  const sy = (val) => oy - ((val - minVal) / (maxVal - minVal)) * plotH;
+
+  // Axes
+  ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(W - pad / 2, oy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox, pad / 2); ctx.stroke();
+
+  // Axis labels
+  ctx.fillStyle = '#94A3B8';
+  ctx.font = '14px Times New Roman';
+  ctx.textAlign = 'center';
+  ctx.fillText('Year', W / 2, oy + 45);
+  ctx.save();
+  ctx.translate(22, H / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Rainfall (mm)', 0, 0);
+  ctx.restore();
+
+  // X-axis ticks
+  ctx.font = '12px Times New Roman';
+  const step = Math.max(1, Math.floor(yearRange / 10));
+  for (let y = minYear; y <= maxYear; y += step) {
+    const xPos = sx(y);
+    ctx.fillStyle = '#94A3B8';
+    ctx.fillText(y.toString(), xPos, oy + 20);
+  }
+
+  // Y-axis ticks
+  ctx.textAlign = 'right';
+  const ySteps = 6;
+  for (let i = 0; i <= ySteps; i++) {
+    const val = minVal + (maxVal - minVal) * (i / ySteps);
+    const yPos = sy(val);
+    ctx.fillStyle = '#94A3B8';
+    ctx.fillText(Math.round(val).toString(), ox - 8, yPos + 4);
+    ctx.strokeStyle = 'rgba(56,189,248,0.4)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(ox - 6, yPos); ctx.lineTo(ox, yPos); ctx.stroke();
+  }
+
+  // 95% Confidence band (Sen's slope CI, pivoting around the trend line at mid-year)
+  ctx.fillStyle = 'rgba(16, 185, 129, 0.12)';
+  ctx.beginPath();
+  ctx.moveTo(sx(minYear), sy(lowerAt(minYear)));
+  ctx.lineTo(sx(maxYear), sy(lowerAt(maxYear)));
+  ctx.lineTo(sx(maxYear), sy(upperAt(maxYear)));
+  ctx.lineTo(sx(minYear), sy(upperAt(minYear)));
+  ctx.closePath();
+  ctx.fill();
+
+  // Data points
+  data.forEach(d => {
+    const x = sx(d.year);
+    const y = sy(d.rainfall);
+    ctx.beginPath();
+    ctx.arc(x, y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#38BDF8';
+    ctx.fill();
+    ctx.strokeStyle = '#0A1628';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+
+  // Running mean line (only where a full 5-year window exists)
+  ctx.strokeStyle = 'rgba(167, 139, 250, 0.6)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([5, 5]);
+  ctx.beginPath();
+  let started = false;
+  data.forEach((d, i) => {
+    const rm = analysisData.runningMeans[i];
+    if (rm === null) return;
+    const x = sx(d.year);
+    const y = sy(rm);
+    if (!started) { ctx.moveTo(x, y); started = true; }
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Sen's slope trend line
+  const trendColor = tSlope > 0 ? '#F59E0B' : '#10B981';
+  ctx.strokeStyle = trendColor;
+  ctx.lineWidth = 3;
+  ctx.shadowColor = trendColor;
+  ctx.shadowBlur = 15;
+  ctx.beginPath();
+  ctx.moveTo(sx(minYear), sy(trendAt(minYear)));
+  ctx.lineTo(sx(maxYear), sy(trendAt(maxYear)));
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Title
+  ctx.fillStyle = '#38BDF8';
+  ctx.font = 'bold 20px Times New Roman';
+  ctx.textAlign = 'center';
+  ctx.fillText('Rainfall Time Series with Trend Line', W / 2, 30);
+
+  // Legend
+  const lx = pad + 30;
+  const ly = pad - 10;
+  ctx.textAlign = 'left';
+  ctx.font = '13px Times New Roman';
+  
+  ctx.fillStyle = '#38BDF8';
+  ctx.beginPath(); ctx.arc(lx, ly, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#94A3B8';
+  ctx.fillText('Annual data', lx + 15, ly + 5);
+  
+  ctx.strokeStyle = 'rgba(167, 139, 250, 0.8)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([5, 5]);
+  ctx.beginPath(); ctx.moveTo(lx - 8, ly + 25); ctx.lineTo(lx + 8, ly + 25); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#94A3B8';
+  ctx.fillText('5-year running mean', lx + 15, ly + 30);
+  
+  ctx.strokeStyle = trendColor;
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(lx - 8, ly + 50); ctx.lineTo(lx + 8, ly + 50); ctx.stroke();
+  ctx.fillStyle = '#94A3B8';
+  ctx.fillText(`Sen's slope: ${tSlope > 0 ? '+' : ''}${tSlope.toFixed(2)} mm/yr`, lx + 15, ly + 55);
+
+  ctx.fillStyle = 'rgba(16, 185, 129, 0.35)';
+  ctx.fillRect(lx - 8, ly + 70, 16, 10);
+  ctx.fillStyle = '#94A3B8';
+  ctx.fillText('95% CI band (Sen\'s slope)', lx + 15, ly + 80);
+}
+
+/* ═══ EXPORT ENGINE (no external libraries): ZIP + XLSX writer with embedded chart images ═══ */
+const _crcTable = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(buf) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < buf.length; i++) c = _crcTable[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+/* files: [{name, data:Uint8Array}] → Uint8Array (ZIP, stored/uncompressed) */
+function makeZip(files) {
+  const enc = new TextEncoder();
+  const parts = [], central = [];
+  let offset = 0;
+  files.forEach(f => {
+    const name = enc.encode(f.name);
+    const crc = crc32(f.data), size = f.data.length;
+
+    const lh = new Uint8Array(30 + name.length);
+    const dv = new DataView(lh.buffer);
+    dv.setUint32(0, 0x04034b50, true);
+    dv.setUint16(4, 20, true);
+    dv.setUint16(6, 0x0800, true);      // UTF-8 names
+    dv.setUint16(8, 0, true);           // method: stored
+    dv.setUint16(10, 0, true);          // time
+    dv.setUint16(12, 0x21, true);       // date 1980-01-01
+    dv.setUint32(14, crc, true);
+    dv.setUint32(18, size, true);
+    dv.setUint32(22, size, true);
+    dv.setUint16(26, name.length, true);
+    dv.setUint16(28, 0, true);
+    lh.set(name, 30);
+    parts.push(lh, f.data);
+
+    const ch = new Uint8Array(46 + name.length);
+    const cv = new DataView(ch.buffer);
+    cv.setUint32(0, 0x02014b50, true);
+    cv.setUint16(4, 20, true);
+    cv.setUint16(6, 20, true);
+    cv.setUint16(8, 0x0800, true);
+    cv.setUint16(10, 0, true);
+    cv.setUint16(12, 0, true);
+    cv.setUint16(14, 0x21, true);
+    cv.setUint32(16, crc, true);
+    cv.setUint32(20, size, true);
+    cv.setUint32(24, size, true);
+    cv.setUint16(28, name.length, true);
+    cv.setUint32(42, offset, true);
+    ch.set(name, 46);
+    central.push(ch);
+    offset += lh.length + size;
+  });
+  const cdSize = central.reduce((s, c) => s + c.length, 0);
+  const end = new Uint8Array(22);
+  const ev = new DataView(end.buffer);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(8, files.length, true);
+  ev.setUint16(10, files.length, true);
+  ev.setUint32(12, cdSize, true);
+  ev.setUint32(16, offset, true);
+
+  const all = [...parts, ...central, end];
+  const total = all.reduce((s, p) => s + p.length, 0);
+  const out = new Uint8Array(total);
+  let pos = 0;
+  all.forEach(p => { out.set(p, pos); pos += p.length; });
+  return out;
+}
+
+function colName(i) {
+  let s = '';
+  i++;
+  while (i > 0) {
+    const m = (i - 1) % 26;
+    s = String.fromCharCode(65 + m) + s;
+    i = Math.floor((i - 1) / 26);
+  }
+  return s;
+}
+function xmlEsc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/* cell = primitive, or {v, s} where s: 1 = header, 2 = number 0.00, 3 = title */
+const XL = { HEAD: 1, NUM: 2, TITLE: 3 };
+function xlNum(v) { return { v, s: XL.NUM }; }
+function xlHead(v) { return { v, s: XL.HEAD }; }
+function xlTitle(v) { return { v, s: XL.TITLE }; }
+
+function sheetXml(sheet) {
+  let x = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+    '<sheetFormatPr defaultRowHeight="15"/>';
+  if (sheet.cols) {
+    x += '<cols>' + sheet.cols.map((w, i) =>
+      `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('') + '</cols>';
+  }
+  x += '<sheetData>';
+  sheet.rows.forEach((row, r) => {
+    if (!row || !row.length) return;
+    let cells = '';
+    row.forEach((cell, c) => {
+      if (cell === null || cell === undefined || cell === '') return;
+      const ref = colName(c) + (r + 1);
+      let v = cell, s = 0;
+      if (typeof cell === 'object') { v = cell.v; s = cell.s || 0; }
+      const sAttr = s ? ` s="${s}"` : '';
+      if (typeof v === 'number') {
+        if (!isFinite(v)) return;
+        cells += `<c r="${ref}"${sAttr}><v>${v}</v></c>`;
+      } else {
+        cells += `<c r="${ref}"${sAttr} t="inlineStr"><is><t xml:space="preserve">${xmlEsc(v)}</t></is></c>`;
+      }
+    });
+    if (cells) x += `<row r="${r + 1}">${cells}</row>`;
+  });
+  x += '</sheetData>';
+  if (sheet.images && sheet.images.length) x += '<drawing r:id="rId1"/>';
+  x += '</worksheet>';
+  return x;
+}
+
+const STYLES_XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+  '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+  '<fonts count="3">' +
+  '<font><sz val="11"/><name val="Calibri"/></font>' +
+  '<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>' +
+  '<font><b/><sz val="14"/><name val="Calibri"/></font>' +
+  '</fonts>' +
+  '<fills count="3">' +
+  '<fill><patternFill patternType="none"/></fill>' +
+  '<fill><patternFill patternType="gray125"/></fill>' +
+  '<fill><patternFill patternType="solid"><fgColor rgb="FF0EA5E9"/><bgColor indexed="64"/></patternFill></fill>' +
+  '</fills>' +
+  '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
+  '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+  '<cellXfs count="4">' +
+  '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+  '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>' +
+  '<xf numFmtId="2" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
+  '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
+  '</cellXfs>' +
+  '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
+  '</styleSheet>';
+
+/* sheets: [{name, rows, cols?, images?: [{bytes, row (0-based), dispW, dispH}]}] → Uint8Array (.xlsx) */
+function buildXlsx(sheets) {
+  const enc = new TextEncoder();
+  const files = [];
+  const add = (name, data) => files.push({ name, data: typeof data === 'string' ? enc.encode(data) : data });
+  const HDR = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+
+  let ct = HDR + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+    '<Default Extension="xml" ContentType="application/xml"/>' +
+    '<Default Extension="png" ContentType="image/png"/>' +
+    '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+    '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>';
+  let wbSheets = '', wbRels = '', mediaN = 0, drawN = 0;
+
+  sheets.forEach((sh, i) => {
+    const n = i + 1;
+    ct += `<Override PartName="/xl/worksheets/sheet${n}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`;
+    wbSheets += `<sheet name="${xmlEsc(sh.name)}" sheetId="${n}" r:id="rId${n}"/>`;
+    wbRels += `<Relationship Id="rId${n}" Type="${REL}/worksheet" Target="worksheets/sheet${n}.xml"/>`;
+
+    if (sh.images && sh.images.length) {
+      drawN++;
+      let drawing = HDR + '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" ' +
+        'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ' +
+        `xmlns:r="${REL}">`;
+      let drawRels = HDR + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
+      sh.images.forEach((img, k) => {
+        mediaN++;
+        add(`xl/media/image${mediaN}.png`, img.bytes);
+        const cx = Math.round(img.dispW * 9525), cy = Math.round(img.dispH * 9525);
+        drawRels += `<Relationship Id="rId${k + 1}" Type="${REL}/image" Target="../media/image${mediaN}.png"/>`;
+        drawing += '<xdr:oneCellAnchor>' +
+          `<xdr:from><xdr:col>0</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${img.row}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>` +
+          `<xdr:ext cx="${cx}" cy="${cy}"/>` +
+          '<xdr:pic>' +
+          `<xdr:nvPicPr><xdr:cNvPr id="${k + 2}" name="Graph ${k + 1}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>` +
+          `<xdr:blipFill><a:blip r:embed="rId${k + 1}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>` +
+          `<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr>` +
+          '</xdr:pic><xdr:clientData/></xdr:oneCellAnchor>';
+      });
+      drawing += '</xdr:wsDr>';
+      drawRels += '</Relationships>';
+      add(`xl/drawings/drawing${drawN}.xml`, drawing);
+      add(`xl/drawings/_rels/drawing${drawN}.xml.rels`, drawRels);
+      add(`xl/worksheets/_rels/sheet${n}.xml.rels`,
+        HDR + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        `<Relationship Id="rId1" Type="${REL}/drawing" Target="../drawings/drawing${drawN}.xml"/></Relationships>`);
+      ct += `<Override PartName="/xl/drawings/drawing${drawN}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>`;
+    }
+    add(`xl/worksheets/sheet${n}.xml`, sheetXml(sh));
+  });
+
+  wbRels += `<Relationship Id="rId${sheets.length + 1}" Type="${REL}/styles" Target="styles.xml"/>`;
+  ct += '</Types>';
+
+  files.unshift(
+    { name: '[Content_Types].xml', data: enc.encode(ct) },
+    { name: '_rels/.rels', data: enc.encode(HDR +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      `<Relationship Id="rId1" Type="${REL}/officeDocument" Target="xl/workbook.xml"/></Relationships>`) },
+    { name: 'xl/workbook.xml', data: enc.encode(HDR +
+      `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="${REL}">` +
+      `<sheets>${wbSheets}</sheets></workbook>`) },
+    { name: 'xl/_rels/workbook.xml.rels', data: enc.encode(HDR +
+      `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${wbRels}</Relationships>`) },
+    { name: 'xl/styles.xml', data: enc.encode(STYLES_XML) }
+  );
+  return makeZip(files);
+}
+
+/* ── browser helpers ── */
+function canvasToPng(canvas) {
+  // flatten onto an opaque dark background so the image looks right inside Excel
+  const t = document.createElement('canvas');
+  t.width = canvas.width; t.height = canvas.height;
+  const c = t.getContext('2d');
+  c.fillStyle = '#050A14';
+  c.fillRect(0, 0, t.width, t.height);
+  c.drawImage(canvas, 0, 0);
+  const bin = atob(t.toDataURL('image/png').split(',')[1]);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return { bytes, w: t.width, h: t.height };
+}
+function downloadBytes(bytes, filename, mime) {
+  const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+/* places stacked images on a sheet; returns {rows, images} */
+function layoutGraphSheet(titleText, noteText, charts, dispW) {
+  const rows = [[xlTitle(titleText)], [noteText]];
+  const images = [];
+  let r = 3;                                   // 1-based row for the next chart title
+  charts.forEach(ch => {
+    const dispH = Math.round(dispW * ch.h / ch.w);
+    rows[r - 1] = [xlTitle(ch.title)];
+    images.push({ bytes: ch.bytes, row: r, dispW, dispH });   // 0-based row index r = row right below the title
+    r += 1 + Math.ceil(dispH / 20) + 2;
+  });
+  return { rows, images };
+}
+
+
+/* ═══ EXPORT: GRAPH → EXCEL / PNG ZIP ═══ */
+function collectCharts() {
+  drawTrendChart();
+  return [Object.assign(
+    { id: 'trendCanvas', file: 'rainfall_trend_mann_kendall', title: 'Rainfall Time Series with Trend Line' },
+    canvasToPng(document.getElementById('trendCanvas')))];
+}
+
+function exportGraphsZip() {
+  if (!analysisData) { alert('Please run the analysis first.'); return; }
+  const files = collectCharts().map(c => ({ name: c.file + '.png', data: c.bytes }));
+  downloadBytes(makeZip(files), `trend_graph_${Date.now()}.zip`, 'application/zip');
+  alert('✅ Graph saved (ZIP of PNG image)!');
+}
+
+function exportExcel() {
+  if (!analysisData) { alert('Please run the analysis first.'); return; }
+  const A = analysisData;
+  const charts = collectCharts();
+  const g = layoutGraphSheet(
+    'Climate Trend Detection — Graph',
+    'The graph is embedded as a high-resolution image. The data behind it is on the other sheets.',
+    charts, 900);
+
+  const sig = A.mk.pValue < A.alpha;
+  const pctDecade = A.meanVal > 0 ? A.sens.slope * 10 / A.meanVal * 100 : 0;
+  const summary = [
+    [xlTitle('Climate Trend Detection — Summary')],
+    [],
+    [xlHead('Parameter'), xlHead('Value')],
+    ['Generated', new Date().toLocaleString()],
+    ['Period', `${A.data[0].year} – ${A.data[A.data.length - 1].year}`],
+    ['Years of record', A.data.length],
+    ['Significance level (α)', xlNum(A.alpha)],
+    [],
+    ['Mann-Kendall S', A.mk.S],
+    ['Variance of S', xlNum(A.mk.varS)],
+    ['Z statistic', xlNum(A.mk.Z)],
+    ['p-value', xlNum(A.mk.pValue)],
+    ['Verdict', sig ? 'Significant trend' : 'No significant trend'],
+    [],
+    ["Sen's slope (mm/year)", xlNum(A.sens.slope)],
+    ['95% CI lower (mm/year)', xlNum(A.sens.lowerCI)],
+    ['95% CI upper (mm/year)', xlNum(A.sens.upperCI)],
+    ['Number of slopes', A.sens.numSlopes],
+    ['Change per decade (% of mean)', xlNum(pctDecade)],
+    [],
+    ['Mean rainfall (mm)', xlNum(A.meanVal)]
+  ];
+
+  const rows = [[xlHead('Year'), xlHead('Rainfall (mm)'), xlHead('Deviation from mean (mm)'),
+                 xlHead('5-year running mean (mm)'), xlHead("Sen's trend line (mm)")]];
+  A.data.forEach((d, i) => {
+    const rm = A.runningMeans[i];
+    rows.push([d.year, xlNum(d.rainfall), xlNum(d.rainfall - A.meanVal),
+               rm === null ? '' : xlNum(rm), xlNum(A.sens.intercept + A.sens.slope * d.year)]);
+  });
+
+  const bytes = buildXlsx([
+    { name: 'Graph',   rows: g.rows, images: g.images, cols: [60] },
+    { name: 'Summary', rows: summary, cols: [32, 26] },
+    { name: 'Data',    rows, cols: [10, 16, 26, 26, 22] }
+  ]);
+  downloadBytes(bytes, `trend_analysis_${Date.now()}.xlsx`,
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  alert('✅ Excel file saved (graph + data)!');
+}
+
+/* ═══ SAVE ═══ */
+function saveResults() {
+  if (!analysisData) return;
+  let out = '═══════════════════════════════════════════\n';
+  out += '  CLIMATE TREND DETECTION REPORT\n';
+  out += '  Mann-Kendall Test & Sen\'s Slope\n';
+  out += '═══════════════════════════════════════════\n\n';
+  out += `Generated: ${new Date().toLocaleString()}\n`;
+  out += `Years of Record: ${analysisData.data.length}\n`;
+  out += `Period: ${analysisData.data[0].year} — ${analysisData.data[analysisData.data.length-1].year}\n\n`;
+  out += '───────────────────────────────────────────\n';
+  out += '  MANN-KENDALL TEST RESULTS\n';
+  out += '───────────────────────────────────────────\n';
+  out += `S Statistic: ${analysisData.mk.S}\n`;
+  out += `Variance of S: ${analysisData.mk.varS.toFixed(2)}\n`;
+  out += `Z Statistic: ${analysisData.mk.Z.toFixed(4)}\n`;
+  out += `p-value: ${fmtP(analysisData.mk.pValue)}\n`;
+  out += `Significance Level (α): ${analysisData.alpha}\n`;
+  out += `Verdict: ${analysisData.mk.pValue < analysisData.alpha ? 'SIGNIFICANT TREND' : 'NO SIGNIFICANT TREND'}\n\n`;
+  out += '───────────────────────────────────────────\n';
+  out += '  SEN\'S SLOPE\n';
+  out += '───────────────────────────────────────────\n';
+  out += `Sen's Slope: ${analysisData.sens.slope.toFixed(4)} mm/year\n`;
+  out += `95% CI Lower: ${analysisData.sens.lowerCI.toFixed(2)} mm/year\n`;
+  out += `95% CI Upper: ${analysisData.sens.upperCI.toFixed(2)} mm/year\n`;
+  out += `Number of slopes: ${analysisData.sens.numSlopes}\n\n`;
+  out += '───────────────────────────────────────────\n';
+  out += '  ANNUAL DATA\n';
+  out += '───────────────────────────────────────────\n';
+  out += 'Year | Rainfall (mm) | Deviation | Running Mean (5yr)\n';
+  analysisData.data.forEach((d, i) => {
+    const dev = d.rainfall - analysisData.meanVal;
+    const rm = analysisData.runningMeans[i];
+    out += `${d.year} | ${d.rainfall.toFixed(1)} | ${dev > 0 ? '+' : ''}${dev.toFixed(1)} | ${rm === null ? '-' : rm.toFixed(1)}\n`;
+  });
+  out += '\n───────────────────────────────────────────\n';
+  out += 'Developed by Junaid Ali · Civil Engineering Research\n';
+  out += '═══════════════════════════════════════════\n';
+
+  const blob = new Blob([out], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `trend_report_${Date.now()}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+  alert('✅ Report saved!');
+}
+
+function saveCSV() {
+  if (!analysisData) return;
+  let out = 'year,rainfall,deviation,running_mean_5yr\n';
+  analysisData.data.forEach((d, i) => {
+    const dev = d.rainfall - analysisData.meanVal;
+    const rm = analysisData.runningMeans[i];
+    out += `${d.year},${d.rainfall.toFixed(2)},${dev.toFixed(2)},${rm === null ? '' : rm.toFixed(2)}\n`;
+  });
+
+  const blob = new Blob([out], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `trend_data_${Date.now()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  alert('✅ CSV saved!');
+}
+</script>
+
+</body>
+</html>

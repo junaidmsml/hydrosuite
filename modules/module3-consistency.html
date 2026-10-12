@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Data Consistency Check — Precipitation Analyzer</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Times New Roman',Times,serif}
+@media (hover:hover) and (pointer:fine){*{cursor:none}}
+body{background:#0A1628;min-height:100vh;overflow-x:hidden;color:#E2E8F0}
+option{background:#0A1628;color:#E2E8F0}
+.cursor-dot{position:fixed;width:8px;height:8px;background:#38BDF8;border-radius:50%;pointer-events:none;z-index:9999;box-shadow:0 0 20px #38BDF8,0 0 40px #38BDF8;transform:translate(-50%,-50%)}
+.cursor-ring{position:fixed;width:40px;height:40px;border:2px solid rgba(56,189,248,.5);border-radius:50%;pointer-events:none;z-index:9998;transform:translate(-50%,-50%);transition:width .3s,height .3s,background .3s,border-color .3s}
+.cursor-ring.hover{width:70px;height:70px;border-color:rgba(34,211,238,.9);background:rgba(34,211,238,.12)}
+.cursor-ring.click{width:100px;height:100px;border-color:#22D3EE;background:rgba(34,211,238,.2)}
+canvas.fx{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none}
+#rainCanvas{z-index:1}#waveCanvas{z-index:2}#trailCanvas{z-index:50}
+.bg{position:fixed;inset:0;pointer-events:none;z-index:1;background:radial-gradient(circle at 20% 30%,rgba(56,189,248,.08),transparent 50%),radial-gradient(circle at 80% 70%,rgba(14,165,233,.06),transparent 50%)}
+.grid-overlay{position:fixed;inset:0;pointer-events:none;z-index:1;background-image:linear-gradient(rgba(56,189,248,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(56,189,248,.03) 1px,transparent 1px);background-size:80px 80px}
+.page{position:fixed;inset:0;overflow-y:auto;z-index:10;opacity:0;visibility:hidden;transform:translateX(100%) scale(.95);transition:all .7s cubic-bezier(.23,1,.32,1);padding:30px 20px}
+.page.active{opacity:1;visibility:visible;transform:none}
+.page.exit-left{transform:translateX(-100%) scale(.95);opacity:0}
+.container{max-width:1300px;margin:0 auto}
+.page-header{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:30px;padding:20px 25px;background:rgba(15,23,42,.7);backdrop-filter:blur(20px);border-radius:18px;border:1px solid rgba(56,189,248,.15)}
+.page-header h2{font-size:1.4rem;color:#38BDF8;letter-spacing:1px}
+.back-btn{padding:10px 22px;border:1px solid rgba(56,189,248,.3);border-radius:10px;background:rgba(56,189,248,.08);color:#38BDF8;font-size:.9rem;font-weight:600;transition:all .3s}
+.back-btn:hover{background:rgba(56,189,248,.2);transform:translateY(-3px)}
+.hero{text-align:center;padding:50px 20px 30px}
+.badge{display:inline-block;padding:8px 22px;border-radius:30px;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.3);font-size:.75rem;letter-spacing:4px;text-transform:uppercase;color:#38BDF8;margin-bottom:24px;animation:fl 3s ease-in-out infinite}
+@keyframes fl{50%{transform:translateY(-6px)}}
+.hero h1{font-size:3.5rem;font-weight:900;background:linear-gradient(90deg,#38BDF8,#0EA5E9,#22D3EE,#38BDF8);background-size:300% auto;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:sh 5s linear infinite;margin-bottom:12px;line-height:1.1}
+@keyframes sh{to{background-position:300% center}}
+.author{font-size:1.15rem;color:#38BDF8;font-weight:700;letter-spacing:3px;margin-bottom:16px;animation:ng 3s ease-in-out infinite}
+@keyframes ng{0%,100%{text-shadow:0 0 15px rgba(56,189,248,.5)}50%{text-shadow:0 0 35px rgba(56,189,248,.9)}}
+.subtitle{color:#94A3B8;letter-spacing:2px;margin-bottom:12px;font-style:italic}
+.desc{color:#7C8CA3;max-width:720px;margin:0 auto;line-height:1.7}
+.section-title{font-size:1.4rem;margin:40px 0 20px;padding-bottom:12px;border-bottom:1px solid rgba(56,189,248,.15);display:flex;align-items:center}
+.section-title::before{content:'';width:5px;height:24px;background:linear-gradient(180deg,#38BDF8,#22D3EE);margin-right:14px;border-radius:3px}
+.features-grid,.summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px;margin-bottom:30px}
+.feature-card,.summary-card,.input-panel{background:rgba(15,23,42,.7);backdrop-filter:blur(20px);border-radius:14px;padding:24px;border:1px solid rgba(56,189,248,.15);transition:all .4s}
+.feature-card:hover,.summary-card:hover{transform:translateY(-6px);box-shadow:0 20px 40px rgba(0,0,0,.4),0 0 30px rgba(56,189,248,.15);border-color:rgba(56,189,248,.4)}
+.feature-card h4{color:#38BDF8;margin-bottom:10px;font-size:1.05rem}
+.feature-card p{font-size:.92rem;color:#94A3B8;line-height:1.6}
+.input-panel{margin-bottom:24px}
+.input-panel h3{font-size:1rem;color:#38BDF8;margin-bottom:20px;letter-spacing:1.5px;text-transform:uppercase}
+.input-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:20px}
+label{display:block;font-size:.78rem;color:#94A3B8;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;font-weight:600}
+input,select,textarea{width:100%;padding:12px 16px;border-radius:10px;border:1px solid rgba(56,189,248,.2);background:rgba(0,0,0,.4);color:#E2E8F0;font-size:.95rem;outline:none;transition:all .3s}
+input:focus,select:focus,textarea:focus{border-color:#38BDF8;box-shadow:0 0 20px rgba(56,189,248,.3)}
+textarea{min-height:180px;resize:vertical;font-family:'Courier New',monospace;line-height:1.7}
+.upload-box{border:2px dashed rgba(56,189,248,.4);border-radius:14px;padding:36px 20px;text-align:center;background:rgba(56,189,248,.03);transition:all .3s}
+.upload-box:hover{border-color:#38BDF8;background:rgba(56,189,248,.08)}
+.upload-box p{color:#94A3B8;margin-top:8px}
+.station-table{width:100%;border-collapse:collapse;background:rgba(0,0,0,.3);min-width:640px}
+.station-table th{background:rgba(56,189,248,.15);color:#38BDF8;padding:12px;text-align:left;font-size:.82rem;text-transform:uppercase;letter-spacing:1px}
+.station-table td{padding:10px 12px;border-bottom:1px solid rgba(56,189,248,.08);font-size:.92rem}
+.summary-card{text-align:center;padding:20px}
+.summary-label{font-size:.72rem;color:#94A3B8;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
+.summary-value{font-size:1.6rem;font-weight:800;color:#38BDF8;font-family:'Courier New',monospace}
+.summary-value.good{color:#10B981}.summary-value.bad{color:#F59E0B}
+.summary-unit{font-size:.75rem;color:#7C8CA3;margin-top:4px}
+.canvas-wrapper{background:rgba(5,10,20,.8);border-radius:16px;padding:16px;border:1px solid rgba(56,189,248,.2);margin-bottom:24px}
+canvas.chart-canvas{width:100%;height:auto;border-radius:10px;display:block}
+.formula-box{background:rgba(34,211,238,.05);border-left:4px solid #22D3EE;border-radius:10px;padding:20px;margin-bottom:24px;font-family:'Courier New',monospace;color:#38BDF8;line-height:1.8}
+.formula-label{font-family:'Times New Roman',serif;color:#94A3B8;font-size:.85rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+.info-box{background:rgba(34,211,238,.08);border-left:4px solid #22D3EE;border-radius:10px;padding:16px 20px;margin-bottom:20px;color:#CBD5E1;line-height:1.7}
+.info-box strong{color:#38BDF8}
+.info-box.warning{background:rgba(245,158,11,.08);border-left-color:#F59E0B}.info-box.warning strong{color:#F59E0B}
+.info-box.success{background:rgba(16,185,129,.08);border-left-color:#10B981}.info-box.success strong{color:#10B981}
+.liquid-btn{position:relative;display:inline-block;margin:5px;padding:14px 36px;border:none;border-radius:50px;background:linear-gradient(135deg,#38BDF8,#0EA5E9,#22D3EE);background-size:300% 300%;color:#0A1628;font-size:.9rem;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;transition:all .4s cubic-bezier(.23,1,.32,1);box-shadow:0 10px 30px rgba(56,189,248,.3),inset 0 2px 8px rgba(255,255,255,.3);animation:lf 4s ease infinite}
+@keyframes lf{50%{background-position:100% 50%}}
+.liquid-btn:hover{transform:translateY(-5px) scale(1.05);box-shadow:0 20px 50px rgba(56,189,248,.5)}
+.liquid-btn.red{background:linear-gradient(135deg,#EF4444,#DC2626);color:#fff}
+.dlbtn{margin-left:auto;padding:6px 16px;font-size:.8rem}.small{padding:10px 24px;font-size:.82rem}
+.footer{text-align:center;padding:40px 20px 30px;color:#64748B;letter-spacing:1px;font-style:italic;border-top:1px solid rgba(56,189,248,.1);margin-top:50px}
+.footer span{color:#38BDF8;font-weight:600}
+#toast{position:fixed;left:50%;bottom:30px;transform:translate(-50%,100px);background:#0C4A7A;color:#fff;padding:12px 24px;border-radius:30px;z-index:10000;border:1px solid #38BDF8;transition:transform .4s}
+#toast.show{transform:translate(-50%,0)}
+::-webkit-scrollbar{width:8px}::-webkit-scrollbar-track{background:#0A1628}::-webkit-scrollbar-thumb{background:linear-gradient(180deg,#38BDF8,#22D3EE);border-radius:10px}
+@media (max-width:700px){.hero h1{font-size:2.2rem}}
+</style>
+</head>
+<body>
+<div class="cursor-dot" id="cursorDot"></div><div class="cursor-ring" id="cursorRing"></div>
+<canvas id="rainCanvas" class="fx"></canvas><canvas id="waveCanvas" class="fx"></canvas><canvas id="trailCanvas" class="fx"></canvas>
+<div class="bg"></div><div class="grid-overlay"></div><div id="toast"></div>
+
+<div class="page active" id="pageDashboard"><div class="container">
+  <div class="page-header"><h2>Data Consistency Check</h2><button class="back-btn" onclick="location.href='index.html'">← Back</button></div>
+  <div class="hero">
+    <div class="badge">Module 3 — Double Mass Curve</div>
+    <h1>Data Consistency Check</h1>
+    <div class="author">by Junaid Ali</div>
+    <p class="subtitle">Double Mass Curve Analysis for Long-Term Data</p>
+    <p class="desc">Compare a station against a regional reference series, detect a change in slope (regime shift), adjust the older record and verify the correction.</p>
+  </div>
+  <div class="section-title">What This Module Does</div>
+  <div class="features-grid">
+    <div class="feature-card"><h4>Double Mass Curve</h4><p>Plots cumulative station rainfall against cumulative reference rainfall, the standard consistency test.</p></div>
+    <div class="feature-card"><h4>Break Detection</h4><p>Finds the point where two straight-line fits (least squares) match the curve best.</p></div>
+    <div class="feature-card"><h4>Data Adjustment</h4><p>Scales the older record by m₂/m₁ so it matches the recent regime.</p></div>
+    <div class="feature-card"><h4>Before / After</h4><p>Original and corrected curves with slopes, so you can verify the fix.</p></div>
+  </div>
+  <div style="text-align:center;margin-top:30px"><button class="liquid-btn" onclick="goToPage('pageInput')">Start Analysis →</button></div>
+  <div class="footer">Developed by <span>Junaid Ali</span> · Civil Engineering Research</div>
+</div></div>
+
+<div class="page" id="pageInput"><div class="container">
+  <div class="page-header"><h2>Data Consistency Check — Input</h2><button class="back-btn" onclick="goToPage('pageDashboard')">← Back</button></div>
+  <div class="info-box"><strong>Data needed:</strong> three columns, <strong>year, station, reference</strong> (annual mm). The reference is the average annual rainfall of nearby stations that you trust. A double mass curve needs it; one station alone cannot be checked.</div>
+  <div class="input-panel"><h3>Option 1: Upload CSV</h3>
+    <div class="upload-box" onclick="$('csvFile').click()"><div style="font-size:2.5rem">📁</div><p>Click to upload CSV file</p><p style="font-size:.8rem">Columns: year, station, reference</p>
+    <input type="file" id="csvFile" accept=".csv,.txt" style="display:none" onchange="handleCsv(event)"></div>
+    <div id="csvStatus" style="display:none;margin-top:15px;padding:12px;background:rgba(34,211,238,.1);border-left:3px solid #22D3EE;border-radius:8px;color:#22D3EE">✅ CSV loaded: <span id="csvFileName"></span></div>
+  </div>
+  <div class="input-panel"><h3>Option 2: Manual Entry</h3>
+    <textarea id="manualData" placeholder="1990, 850, 1020&#10;1991, 920, 1100&#10;1992, 780, 960"></textarea>
+    <div style="margin-top:16px"><button class="liquid-btn small" onclick="demo()">Load Demo Data</button><button class="liquid-btn small red" onclick="$('manualData').value=''">Clear</button></div>
+  </div>
+  <div class="input-panel"><h3>Analysis Settings</h3>
+    <div class="input-row">
+      <div><label>Break Detection</label><select id="detectionMethod" onchange="$('manualYearGroup').style.display=this.value==='manual'?'block':'none'"><option value="auto">Auto-detect slope change</option><option value="manual">Manual year entry</option></select></div>
+      <div id="manualYearGroup" style="display:none"><label>Break Year (first year of new regime)</label><input type="number" id="changeYear" value="2000"></div>
+      <div><label>Slope-change threshold (%)</label><input type="number" id="thr" value="5" min="0" step="0.5"></div>
+    </div>
+  </div>
+  <div style="text-align:center;margin-top:30px"><button class="liquid-btn" onclick="runAnalysis()">Run Analysis →</button></div>
+</div></div>
+
+<div class="page" id="pageResults"><div class="container">
+  <div class="page-header"><h2>Data Consistency Check — Results</h2><button class="back-btn" onclick="goToPage('pageInput')">← Back</button></div>
+  <div id="verdict"></div><div class="summary-grid" id="summary"></div>
+  <div class="section-title">Double Mass Curve — Original Data<button class="back-btn dlbtn" onclick="dlChart('dmcBefore','dmc_original')">⬇ PNG</button></div>
+  <div class="canvas-wrapper"><canvas id="dmcBefore" class="chart-canvas" width="1000" height="620"></canvas></div>
+  <div class="section-title">Double Mass Curve — After Correction<button class="back-btn dlbtn" onclick="dlChart('dmcAfter','dmc_corrected')">⬇ PNG</button></div>
+  <div class="canvas-wrapper"><canvas id="dmcAfter" class="chart-canvas" width="1000" height="620"></canvas></div>
+  <div class="section-title">Adjustment Calculation</div><div class="formula-box" id="formulaBox"></div>
+  <div class="section-title">Annual Data Table</div>
+  <div class="input-panel" style="overflow-x:auto;padding:12px"><table class="station-table" id="dataTable"><thead><tr><th>Year</th><th>Station (mm)</th><th>Reference (mm)</th><th>Adjusted (mm)</th><th>Cum. Reference</th><th>Cum. Station</th><th>Cum. Adjusted</th></tr></thead><tbody></tbody></table></div>
+  <div style="text-align:center;margin-top:30px"><button class="liquid-btn" onclick="saveChartsZip()">All Charts (PNG ZIP)</button><button class="liquid-btn" onclick="saveReport()">Save Report (TXT)</button><button class="liquid-btn" onclick="saveCSV()">Save CSV</button><button class="liquid-btn" onclick="goToPage('pageDashboard')">Dashboard</button></div>
+  <div class="footer">Developed by <span>Junaid Ali</span> · Civil Engineering Research</div>
+</div></div>
+
+<script>
+const $=id=>document.getElementById(id);
+function msg(t){const e=$('toast');e.textContent=t;e.classList.add('show');clearTimeout(msg.t);msg.t=setTimeout(()=>e.classList.remove('show'),3200)}
+
+/* ===== Effects: cursor, water drops, rain, waves (one loop) ===== */
+const dot=$('cursorDot'),ring=$('cursorRing'),T=$('trailCanvas'),R=$('rainCanvas'),V=$('waveCanvas');
+const tc=T.getContext('2d'),rc=R.getContext('2d'),wc=V.getContext('2d');
+let parts=[],off=0;const drops=[];
+if(!matchMedia('(pointer:fine)').matches){dot.style.display=ring.style.display='none'}
+function rs(){for(const c of[T,R,V]){c.width=innerWidth;c.height=innerHeight}}
+rs();addEventListener('resize',rs);
+for(let i=0;i<120;i++)drops.push({x:Math.random()*innerWidth,y:Math.random()*innerHeight,l:10+Math.random()*20,s:2+Math.random()*3,o:.15+Math.random()*.3,w:.5+Math.random()*1.5});
+function burst(x,y,n,sp,sz){for(let i=0;i<n;i++)parts.push({x,y,vx:(Math.random()-.5)*sp,vy:(Math.random()-.5)*sp,life:1,size:Math.random()*sz+2,c:Math.random()>.5?'56,189,248':'34,211,238'})}
+addEventListener('pointermove',e=>{dot.style.left=ring.style.left=e.clientX+'px';dot.style.top=ring.style.top=e.clientY+'px';burst(e.clientX,e.clientY,2,3,4)});
+addEventListener('pointerdown',e=>{ring.classList.add('click');burst(e.clientX,e.clientY,40,12,7)});
+addEventListener('pointerup',()=>ring.classList.remove('click'));
+const HOV='button,input,select,textarea,.upload-box,.feature-card';
+document.addEventListener('pointerover',e=>{if(e.target.closest(HOV))ring.classList.add('hover')});
+document.addEventListener('pointerout',e=>{if(e.target.closest(HOV))ring.classList.remove('hover')});
+function wave(y,a,l,col,sp,op){wc.beginPath();wc.moveTo(0,V.height);for(let x=0;x<=V.width;x+=5)wc.lineTo(x,y+Math.sin((x+off*sp)/l)*a);wc.lineTo(V.width,V.height);wc.fillStyle=col;wc.globalAlpha=op;wc.fill();wc.globalAlpha=1}
+function loop(){
+  tc.clearRect(0,0,T.width,T.height);parts=parts.filter(p=>p.life>0&&p.size>.3);
+  for(const p of parts){p.x+=p.vx;p.y+=p.vy;p.vy+=.12;p.life-=.02;p.size*=.975;tc.beginPath();tc.arc(p.x,p.y,p.size,0,6.283);tc.fillStyle=`rgba(${p.c},${p.life*.8})`;tc.shadowColor=`rgba(${p.c},${p.life})`;tc.shadowBlur=12;tc.fill()}
+  tc.shadowBlur=0;rc.clearRect(0,0,R.width,R.height);rc.lineCap='round';
+  for(const d of drops){d.y+=d.s;if(d.y>R.height+20){d.y=-30;d.x=Math.random()*R.width}rc.strokeStyle=`rgba(56,189,248,${d.o})`;rc.lineWidth=d.w;rc.beginPath();rc.moveTo(d.x,d.y);rc.lineTo(d.x-1,d.y+d.l);rc.stroke()}
+  wc.clearRect(0,0,V.width,V.height);
+  wave(V.height-60,25,200,'#0EA5E9',1,.15);wave(V.height-40,30,250,'#38BDF8',.8,.12);wave(V.height-20,20,180,'#22D3EE',1.2,.1);
+  off++;requestAnimationFrame(loop)}
+loop();
+
+/* ===== Navigation ===== */
+let cur='pageDashboard',busy=false;
+function goToPage(id){if(id===cur||busy)return;busy=true;const c=$(cur),n=$(id);c.classList.remove('active');c.classList.add('exit-left');
+  setTimeout(()=>{c.classList.remove('exit-left');n.classList.add('active');n.scrollTop=0;cur=id;busy=false},500)}
+
+/* ===== Input ===== */
+function handleCsv(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();
+  r.onload=ev=>{$('manualData').value=ev.target.result.trim();$('csvStatus').style.display='block';$('csvFileName').textContent=f.name;e.target.value=''};r.readAsText(f)}
+function demo(){let s=7;const r=()=>(s=(s*16807)%2147483647)/2147483647;let o='';
+  for(let i=0;i<21;i++){const ref=Math.round(1000+180*Math.sin(i*1.1)+240*(r()-.5)),st=Math.round(ref*(i<10?.75:1)*(1+.12*(r()-.5)));o+=`${1990+i}, ${st}, ${ref}\n`}
+  $('manualData').value=o.trim()}
+function parseData(){
+  const t=$('manualData').value.trim();if(!t){msg('Enter or upload data first.');return null}
+  const rows=[];let bad=0;
+  for(const l of t.split(/\r?\n/)){const s=l.trim();if(!s)continue;const p=s.split(/[,;\t\s]+/),y=parseInt(p[0]),st=parseFloat(p[1]),rf=parseFloat(p[2]);
+    if(isNaN(y)||isNaN(st)||isNaN(rf)||st<0||rf<=0){if(/^\d/.test(s))bad++;continue}rows.push({year:y,st,ref:rf})}
+  if(new Set(rows.map(r=>r.year)).size!==rows.length){msg('Duplicate years found. Each year must appear once.');return null}
+  if(bad)msg(bad+' invalid row(s) skipped (need year, station, reference).');
+  return rows.sort((a,b)=>a.year-b.year)}
+
+/* ===== Maths ===== */
+function ols(p){const n=p.length;let sx=0,sy=0,sxy=0,sxx=0;
+  for(const q of p){sx+=q.x;sy+=q.y;sxy+=q.x*q.y;sxx+=q.x*q.x}
+  const d=n*sxx-sx*sx;if(!d)return{m:0,b:0,sse:Infinity,r2:0};
+  const m=(n*sxy-sx*sy)/d,b=(sy-m*sx)/n;let sse=0,sst=0;
+  for(const q of p){sse+=(q.y-m*q.x-b)**2;sst+=(q.y-sy/n)**2}
+  return{m,b,sse,r2:sst?1-sse/sst:1}}
+function detect(pts){let best=3,bs=Infinity;
+  for(let k=3;k<=pts.length-3;k++){const s=ols(pts.slice(0,k)).sse+ols(pts.slice(k)).sse;if(s<bs){bs=s;best=k}}return best}
+
+let A=null;
+function runAnalysis(){
+  const d=parseData();if(!d)return;
+  if(d.length<6){msg('At least 6 years of data are needed.');return}
+  let k;
+  if($('detectionMethod').value==='manual'){k=d.findIndex(r=>r.year===parseInt($('changeYear').value));
+    if(k<0){msg('Break year not found in data.');return}
+    if(k<3||k>d.length-3){msg('Break year must leave at least 3 years on both sides.');return}}
+  let cr=0,cs=0;d.forEach(r=>{cr+=r.ref;cs+=r.st;r.cumRef=cr;r.cumSt=cs});
+  const pts=d.map(r=>({x:r.cumRef,y:r.cumSt}));
+  if($('detectionMethod').value==='auto')k=detect(pts);
+  const f1=ols(pts.slice(0,k)),f2=ols(pts.slice(k)),m1=f1.m,m2=f2.m;
+  const chg=Math.abs(m1-m2)/m2*100,thr=parseFloat($('thr').value)||0,ok=chg<thr,ratio=ok?1:m2/m1;
+  let ca=0;d.forEach((r,i)=>{r.adj=i<k?r.st*ratio:r.st;ca+=r.adj;r.cumAdj=ca});
+  const fa=ols(d.map(r=>({x:r.cumRef,y:r.cumAdj}))),m1a=ols(d.slice(0,k).map(r=>({x:r.cumRef,y:r.cumAdj}))).m;
+  const yr=d[k].year,avg=a=>a.reduce((s,v)=>s+v,0)/a.length;
+  A={d,k,yr,pts,f1,f2,m1,m2,chg,ratio,ok,fa,m1a,mB:avg(d.slice(0,k).map(r=>r.st)),mBa:avg(d.slice(0,k).map(r=>r.adj)),mA:avg(d.slice(k).map(r=>r.st))};
+
+  $('verdict').innerHTML=ok
+   ?`<div class="info-box success" style="font-size:1rem;padding:22px"><div style="font-size:1.5rem">✅</div>Record is <strong>consistent</strong>. Best split at ${yr} gives a slope change of ${chg.toFixed(2)}%, below the ${thr}% threshold. No adjustment applied.</div>`
+   :`<div class="info-box warning" style="font-size:1rem;padding:22px"><div style="font-size:1.5rem">⚠️</div>Slope change detected at <strong>${yr}</strong> (${chg.toFixed(2)}%, threshold ${thr}%). Years before ${yr} were multiplied by <strong>${ratio.toFixed(4)}</strong>.</div>`;
+  $('summary').innerHTML=[['Break Year',yr,''],['Slope Before (m₁)',m1.toFixed(4),''],['Slope After (m₂)',m2.toFixed(4),''],['Slope Change',chg.toFixed(2)+'%',ok?'good':'bad'],['Adjustment Factor',ratio.toFixed(4),ok?'good':'bad','m₂ / m₁']]
+   .map(s=>`<div class="summary-card"><div class="summary-label">${s[0]}</div><div class="summary-value ${s[2]}">${s[1]}</div><div class="summary-unit">${s[3]||''}</div></div>`).join('');
+  $('formulaBox').innerHTML=`<div class="formula-label">Slopes (cumulative station vs cumulative reference)</div>m₁ (before ${yr}) = ${m1.toFixed(4)}  (R² = ${f1.r2.toFixed(4)})<br>m₂ (from ${yr}) = ${m2.toFixed(4)}  (R² = ${f2.r2.toFixed(4)})<br><br><div class="formula-label">Adjustment (older record to recent regime)</div>Adjusted = Observed × (m₂ / m₁) = Observed × (${m2.toFixed(4)} / ${m1.toFixed(4)})<br>Factor = <strong>${ratio.toFixed(4)}</strong> ${ok?'(not applied, record consistent)':'(applied to years before '+yr+')'}<br><br><div class="formula-label">Check</div>Slope before after adjustment = ${m1a.toFixed(4)} (target m₂ = ${m2.toFixed(4)})<br>Mean before ${yr}: ${A.mB.toFixed(2)} mm → ${A.mBa.toFixed(2)} mm (adjusted)<br>Mean from ${yr}: ${A.mA.toFixed(2)} mm`;
+  $('dataTable').tBodies[0].innerHTML=d.map((r,i)=>`<tr><td>${r.year}</td><td>${r.st.toFixed(1)}</td><td>${r.ref.toFixed(1)}</td><td style="color:${i<k&&!ok?'#F59E0B':'#22D3EE'}">${r.adj.toFixed(1)}</td><td>${r.cumRef.toFixed(0)}</td><td>${r.cumSt.toFixed(0)}</td><td>${r.cumAdj.toFixed(0)}</td></tr>`).join('');
+  goToPage('pageResults');setTimeout(drawCharts,600)}
+
+/* ===== Charts ===== */
+function nice(r){const p=10**Math.floor(Math.log10(r)),f=r/p;return(f<1.5?1:f<3?2:f<7?5:10)*p}
+function chart(id,title,lines,mk){
+  const cv=$(id),c=cv.getContext('2d'),W=cv.width,H=cv.height,L=100,Rt=40,Tp=70,B=80;
+  const g=c.createLinearGradient(0,0,W,H);g.addColorStop(0,'#050a14');g.addColorStop(1,'#0a1423');c.fillStyle=g;c.fillRect(0,0,W,H);
+  let xm=0,ym=0;lines.forEach(l=>l.pts.forEach(p=>{xm=Math.max(xm,p.x);ym=Math.max(ym,p.y)}));
+  const sx=nice(xm/6),sy=nice(ym/6),X=Math.ceil(xm/sx)*sx,Y=Math.ceil(ym/sy)*sy;
+  const px=x=>L+x/X*(W-L-Rt),py=y=>H-B-y/Y*(H-Tp-B);
+  c.font='14px Times New Roman';c.lineWidth=1;
+  for(let v=0;v<=X+1e-6;v+=sx){c.strokeStyle='rgba(56,189,248,.09)';c.beginPath();c.moveTo(px(v),py(0));c.lineTo(px(v),py(Y));c.stroke();c.fillStyle='#94A3B8';c.textAlign='center';c.fillText(Math.round(v),px(v),H-B+22)}
+  for(let v=0;v<=Y+1e-6;v+=sy){c.strokeStyle='rgba(56,189,248,.09)';c.beginPath();c.moveTo(px(0),py(v));c.lineTo(px(X),py(v));c.stroke();c.fillStyle='#94A3B8';c.textAlign='right';c.fillText(Math.round(v),L-10,py(v)+5)}
+  c.strokeStyle='rgba(56,189,248,.5)';c.lineWidth=2;c.beginPath();c.moveTo(px(0),py(Y));c.lineTo(px(0),py(0));c.lineTo(px(X),py(0));c.stroke();
+  c.fillStyle='#94A3B8';c.textAlign='center';c.font='15px Times New Roman';c.fillText('Cumulative Reference Rainfall (mm)',(L+W-Rt)/2,H-22);
+  c.save();c.translate(28,(Tp+H-B)/2);c.rotate(-Math.PI/2);c.fillText('Cumulative Station Rainfall (mm)',0,0);c.restore();
+  for(const l of lines){c.save();c.strokeStyle=l.col;c.lineWidth=l.w||3;c.setLineDash(l.dash||[]);if(!l.dash){c.shadowColor=l.col;c.shadowBlur=12}
+    c.beginPath();l.pts.forEach((p,i)=>i?c.lineTo(px(p.x),py(p.y)):c.moveTo(px(p.x),py(p.y)));c.stroke();c.restore();
+    if(l.dots)for(const p of l.pts.slice(1)){c.beginPath();c.arc(px(p.x),py(p.y),4,0,6.283);c.fillStyle=l.col;c.fill()}}
+  if(mk){c.strokeStyle='#EF4444';c.lineWidth=2;c.setLineDash([6,6]);c.beginPath();c.moveTo(px(mk.x),py(mk.y));c.lineTo(px(mk.x),py(0));c.stroke();c.setLineDash([]);c.fillStyle='#EF4444';c.font='bold 14px Times New Roman';c.textAlign='center';c.fillText(mk.t,px(mk.x),py(0)-8)}
+  c.textAlign='left';c.font='14px Times New Roman';let ly=Tp+14;
+  for(const l of lines){if(!l.lab)continue;c.fillStyle=l.col;c.fillRect(L+20,ly-4,28,4);c.fillStyle='#CBD5E1';c.fillText(l.lab,L+56,ly+2);ly+=22}
+  c.fillStyle='#38BDF8';c.font='bold 21px Times New Roman';c.textAlign='center';c.fillText(title,W/2,34)}
+function drawCharts(){
+  if(!A)return;const{d,k,pts,f1,f2,fa,m1,m2,yr,ok}=A,O={x:0,y:0};
+  const seg=(f,a,b)=>[{x:a,y:f.m*a+f.b},{x:b,y:f.m*b+f.b}];
+  const mk={x:pts[k-1].x,y:pts[k-1].y,t:'Break ≈ '+yr};
+  chart('dmcBefore','Double Mass Curve — Original Data',[
+    {pts:[O,...pts],col:'#38BDF8',dots:1,lab:'Station vs reference (cumulative)'},
+    {pts:seg(f1,0,pts[k-1].x),col:'#F59E0B',w:2,dash:[8,5],lab:'Fit before break, m₁ = '+m1.toFixed(3)},
+    {pts:seg(f2,pts[k].x,pts[pts.length-1].x),col:'#10B981',w:2,dash:[8,5],lab:'Fit after break, m₂ = '+m2.toFixed(3)}],mk);
+  const adj=d.map(r=>({x:r.cumRef,y:r.cumAdj}));
+  chart('dmcAfter','Double Mass Curve — After Correction',[
+    {pts:[O,...pts],col:'rgba(56,189,248,.45)',w:2,dash:[5,5],lab:'Original'},
+    {pts:[O,...adj],col:'#10B981',dots:1,lab:ok?'Adjusted (unchanged)':'Adjusted'},
+    {pts:seg(fa,0,adj[adj.length-1].x),col:'#FFFFFF',w:1.5,dash:[2,6],lab:'Single trend, slope = '+fa.m.toFixed(3)+', R² = '+fa.r2.toFixed(4)}],{x:adj[k-1].x,y:adj[k-1].y,t:mk.t})}
+
+/* ===== Save ===== */
+function dl(txt,type,name){const u=URL.createObjectURL(new Blob([txt],{type})),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000)}
+function saveReport(){if(!A)return;const l='='.repeat(45);
+  let o=`${l}\n  DATA CONSISTENCY CHECK REPORT\n  Double Mass Curve Analysis\n${l}\n\nGenerated: ${new Date().toLocaleString()}\nRecords: ${A.d.length}\nBreak year: ${A.yr}\n\nSlope before (m1): ${A.m1.toFixed(4)}\nSlope after (m2):  ${A.m2.toFixed(4)}\nSlope change:      ${A.chg.toFixed(2)}%\nAdjustment factor (m2/m1 applied to older record): ${A.ratio.toFixed(4)}\n\nYear | Station | Reference | Adjusted\n`;
+  A.d.forEach(r=>o+=`${r.year} | ${r.st.toFixed(1)} | ${r.ref.toFixed(1)} | ${r.adj.toFixed(1)}\n`);
+  o+=`\nDeveloped by Junaid Ali · Civil Engineering Research\n`;dl(o,'text/plain','consistency_report_'+Date.now()+'.txt');msg('Report saved.')}
+function saveCSV(){if(!A)return;let o='year,station,reference,adjusted,cum_reference,cum_station,cum_adjusted\n';
+  A.d.forEach(r=>o+=`${r.year},${r.st.toFixed(2)},${r.ref.toFixed(2)},${r.adj.toFixed(2)},${r.cumRef.toFixed(2)},${r.cumSt.toFixed(2)},${r.cumAdj.toFixed(2)}\n`);
+  dl(o,'text/csv','adjusted_rainfall_'+Date.now()+'.csv');msg('CSV saved.')}
+/* ===== Export: chart PNGs and ZIP ===== */
+const CH=[['dmcBefore','Double Mass Curve — Original Data','dmc_original'],['dmcAfter','Double Mass Curve — After Correction','dmc_corrected']];
+function dlBlob(b,name){const u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000)}
+const pngBytes=id=>{const b=atob($(id).toDataURL('image/png').split(',')[1]),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u};
+function dlChart(id,name){if(!A){msg('Run the estimation first.');return}$(id).toBlob(b=>dlBlob(b,'consistency_'+name+'.png'))}
+const CRCT=(()=>{const t=[];for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+const crc32=b=>{let c=0xFFFFFFFF;for(let i=0;i<b.length;i++)c=CRCT[(c^b[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0};
+function zip(files){const enc=new TextEncoder(),parts=[],cd=[];let off=0;const d=new Date(),dt=(d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1),dd=((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate();
+  for(const f of files){const nm=enc.encode(f.name),crc=crc32(f.data),sz=f.data.length;
+    const lh=new DataView(new ArrayBuffer(30));lh.setUint32(0,0x04034b50,true);lh.setUint16(4,20,true);lh.setUint16(6,0x0800,true);lh.setUint16(10,dt,true);lh.setUint16(12,dd,true);lh.setUint32(14,crc,true);lh.setUint32(18,sz,true);lh.setUint32(22,sz,true);lh.setUint16(26,nm.length,true);
+    parts.push(new Uint8Array(lh.buffer),nm,f.data);
+    const ch=new DataView(new ArrayBuffer(46));ch.setUint32(0,0x02014b50,true);ch.setUint16(4,20,true);ch.setUint16(6,20,true);ch.setUint16(8,0x0800,true);ch.setUint16(12,dt,true);ch.setUint16(14,dd,true);ch.setUint32(16,crc,true);ch.setUint32(20,sz,true);ch.setUint32(24,sz,true);ch.setUint16(28,nm.length,true);ch.setUint32(42,off,true);
+    cd.push(new Uint8Array(ch.buffer),nm);off+=30+nm.length+sz}
+  const cs=cd.reduce((t,a)=>t+a.length,0),e=new DataView(new ArrayBuffer(22));e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,cs,true);e.setUint32(16,off,true);
+  return new Blob([...parts,...cd,new Uint8Array(e.buffer)],{type:'application/zip'})}
+function saveChartsZip(){if(!A){msg('Run the estimation first.');return}
+  dlBlob(zip(CH.map(c=>({name:'consistency_'+c[2]+'.png',data:pngBytes(c[0])}))),'consistency_charts_'+Date.now()+'.zip');msg('Charts ZIP saved.')}
+</script>
+</body>
+</html>

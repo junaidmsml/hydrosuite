@@ -1,0 +1,2201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Future Rainfall Projection — Precipitation Analyzer</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Times New Roman', Times, serif; cursor: none; }
+  body { background: #0A1628; min-height: 100vh; overflow-x: hidden; color: #E2E8F0; position: relative; }
+
+  .cursor-dot {
+    position: fixed; width: 8px; height: 8px;
+    background: #38BDF8; border-radius: 50%;
+    pointer-events: none; z-index: 9999;
+    box-shadow: 0 0 20px #38BDF8, 0 0 40px #38BDF8;
+    transform: translate(-50%, -50%);
+  }
+  .cursor-ring {
+    position: fixed; width: 40px; height: 40px;
+    border: 2px solid rgba(56, 189, 248, 0.5);
+    border-radius: 50%;
+    pointer-events: none; z-index: 9998;
+    transform: translate(-50%, -50%);
+    transition: all 0.3s ease;
+  }
+  .cursor-ring.hover {
+    width: 70px; height: 70px;
+    border-color: rgba(34, 211, 238, 0.9);
+    background: rgba(34, 211, 238, 0.12);
+    box-shadow: 0 0 30px rgba(56, 189, 248, 0.4);
+  }
+  .cursor-ring.click {
+    width: 100px; height: 100px;
+    border-color: rgba(34, 211, 238, 1);
+    background: rgba(34, 211, 238, 0.2);
+    box-shadow: 0 0 60px rgba(56, 189, 248, 0.8);
+  }
+
+  .rain-canvas, .wave-canvas, #trailCanvas {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%; pointer-events: none;
+  }
+  .rain-canvas { z-index: 1; }
+  .wave-canvas { z-index: 2; }
+  #trailCanvas { z-index: 3; }
+
+  .gradient-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: 
+      radial-gradient(circle at 20% 30%, rgba(56,189,248,0.08) 0%, transparent 50%),
+      radial-gradient(circle at 80% 70%, rgba(14,165,233,0.06) 0%, transparent 50%);
+    z-index: 1; pointer-events: none;
+    animation: gradientShift 12s ease-in-out infinite alternate;
+  }
+  @keyframes gradientShift {
+    0% { transform: scale(1) rotate(0deg); opacity: 0.6; }
+    100% { transform: scale(1.15) rotate(2deg); opacity: 1; }
+  }
+  .grid-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background-image: 
+      linear-gradient(rgba(56,189,248,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(56,189,248,0.03) 1px, transparent 1px);
+    background-size: 80px 80px;
+    z-index: 1; pointer-events: none;
+    animation: gridPulse 8s ease-in-out infinite;
+  }
+  @keyframes gridPulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+
+  .page {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    overflow-y: auto; z-index: 10;
+    opacity: 0; visibility: hidden;
+    transform: translateX(100%) scale(0.95);
+    transition: all 0.7s cubic-bezier(0.23, 1, 0.32, 1);
+    padding: 30px 20px;
+  }
+  .page.active { opacity: 1; visibility: visible; transform: translateX(0) scale(1); }
+  .page.exit-left { transform: translateX(-100%) scale(0.95); opacity: 0; }
+
+  .container { max-width: 1300px; margin: 0 auto; position: relative; z-index: 10; }
+
+  .page-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 30px; padding: 20px 25px;
+    background: rgba(15, 23, 42, 0.7);
+    backdrop-filter: blur(20px);
+    border-radius: 18px;
+    border: 1px solid rgba(56,189,248,0.15);
+  }
+  .page-header h2 { font-size: 1.4rem; color: #38BDF8; letter-spacing: 1px; }
+
+  .back-btn {
+    padding: 10px 22px;
+    border: 1px solid rgba(56,189,248,0.3);
+    border-radius: 10px;
+    background: rgba(56,189,248,0.08);
+    color: #38BDF8;
+    font-size: 0.85rem;
+    cursor: none; font-weight: 600;
+    transition: all 0.3s ease;
+  }
+  .back-btn:hover {
+    background: rgba(56,189,248,0.2);
+    transform: translateY(-3px);
+    box-shadow: 0 10px 25px rgba(56,189,248,0.2);
+  }
+
+  .hero { text-align: center; padding: 60px 20px 40px; margin-bottom: 30px; }
+  .brand-badge {
+    display: inline-block; padding: 8px 22px;
+    border-radius: 30px;
+    background: rgba(56,189,248,0.08);
+    border: 1px solid rgba(56,189,248,0.3);
+    font-size: 0.72rem; letter-spacing: 4px;
+    text-transform: uppercase; color: #38BDF8;
+    margin-bottom: 24px;
+    animation: badgeFloat 3s ease-in-out infinite;
+  }
+  @keyframes badgeFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+  }
+  .hero h1 {
+    font-size: 3.5rem; font-weight: 900;
+    background: linear-gradient(90deg, #38BDF8, #0EA5E9, #22D3EE, #38BDF8);
+    background-size: 300% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: shine 5s linear infinite;
+    margin-bottom: 12px;
+    letter-spacing: -1px; line-height: 1.1;
+  }
+  @keyframes shine { to { background-position: 300% center; } }
+  .author-name {
+    font-size: 1.15rem; color: #38BDF8; font-weight: 700;
+    letter-spacing: 3px; margin-bottom: 16px;
+    animation: nameGlow 3s ease-in-out infinite;
+  }
+  @keyframes nameGlow {
+    0%, 100% { text-shadow: 0 0 15px rgba(56,189,248,0.5); }
+    50% { text-shadow: 0 0 35px rgba(56,189,248,0.9), 0 0 60px rgba(14,165,233,0.5); }
+  }
+  .hero .subtitle {
+    font-size: 1rem; color: #94A3B8;
+    letter-spacing: 2px; margin-bottom: 12px;
+    font-style: italic;
+  }
+  .hero .description {
+    color: #64748B; font-size: 0.95rem;
+    max-width: 720px; margin: 0 auto; line-height: 1.7;
+  }
+
+  .section-title {
+    font-size: 1.4rem; color: #E2E8F0;
+    margin: 40px 0 20px 0; padding-bottom: 12px;
+    border-bottom: 1px solid rgba(56,189,248,0.15);
+    display: flex; align-items: center;
+  }
+  .section-title::before {
+    content: ''; display: inline-block;
+    width: 5px; height: 24px;
+    background: linear-gradient(180deg, #38BDF8, #22D3EE);
+    margin-right: 14px; border-radius: 3px;
+    box-shadow: 0 0 12px rgba(56,189,248,0.5);
+  }
+
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px; margin-bottom: 40px;
+  }
+  .feature-card {
+    background: rgba(15, 23, 42, 0.7);
+    backdrop-filter: blur(20px);
+    border-radius: 14px;
+    padding: 24px;
+    border: 1px solid rgba(56,189,248,0.15);
+    transition: all 0.4s ease;
+    cursor: none;
+  }
+  .feature-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 20px 40px rgba(0,0,0,0.4), 0 0 30px rgba(56,189,248,0.15);
+    border-color: rgba(56,189,248,0.4);
+  }
+  .feature-card h4 {
+    font-size: 1.05rem; color: #38BDF8;
+    margin-bottom: 10px; letter-spacing: 0.5px;
+  }
+  .feature-card p {
+    font-size: 0.88rem; color: #94A3B8; line-height: 1.6;
+  }
+
+  .input-panel {
+    background: rgba(15, 23, 42, 0.7);
+    backdrop-filter: blur(20px);
+    border-radius: 16px;
+    padding: 28px;
+    border: 1px solid rgba(56,189,248,0.15);
+    margin-bottom: 24px;
+  }
+  .input-panel h3 {
+    font-size: 1rem; color: #38BDF8;
+    margin-bottom: 20px; letter-spacing: 1.5px;
+    text-transform: uppercase;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .input-panel h3::before {
+    content: ''; width: 4px; height: 18px;
+    background: linear-gradient(180deg, #38BDF8, #22D3EE);
+    border-radius: 2px;
+  }
+  .input-row {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 20px; margin-bottom: 16px;
+  }
+  label {
+    display: block; font-size: 0.78rem;
+    color: #94A3B8; margin-bottom: 8px;
+    text-transform: uppercase; letter-spacing: 1px;
+    font-weight: 600;
+  }
+  input, select, textarea {
+    width: 100%; padding: 12px 16px;
+    border-radius: 10px;
+    border: 1px solid rgba(56,189,248,0.2);
+    background: rgba(0, 0, 0, 0.4);
+    color: #E2E8F0; font-size: 0.95rem;
+    font-family: 'Times New Roman', serif;
+    outline: none; cursor: none;
+    transition: all 0.3s ease;
+  }
+  input:focus, select:focus, textarea:focus {
+    border-color: #38BDF8;
+    box-shadow: 0 0 20px rgba(56,189,248,0.3);
+    background: rgba(56,189,248,0.05);
+  }
+  textarea {
+    min-height: 180px;
+    resize: vertical;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    line-height: 1.7;
+  }
+
+  .upload-box {
+    border: 2px dashed rgba(56,189,248,0.4);
+    border-radius: 14px;
+    padding: 40px 20px;
+    text-align: center;
+    background: rgba(56,189,248,0.03);
+    transition: all 0.3s ease;
+    cursor: none;
+    margin-bottom: 20px;
+  }
+  .upload-box:hover {
+    border-color: #38BDF8;
+    background: rgba(56,189,248,0.08);
+    box-shadow: 0 0 30px rgba(56,189,248,0.15);
+  }
+  .upload-box .upload-icon { font-size: 2.5rem; margin-bottom: 10px; }
+  .upload-box p { color: #94A3B8; font-size: 0.9rem; margin-bottom: 15px; }
+  .upload-box input[type="file"] { display: none; }
+
+  .station-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+    background: rgba(0,0,0,0.3);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .station-table th {
+    background: rgba(56,189,248,0.15);
+    color: #38BDF8;
+    padding: 12px;
+    text-align: left;
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .station-table td {
+    padding: 12px;
+    border-bottom: 1px solid rgba(56,189,248,0.08);
+    color: #E2E8F0;
+    font-size: 0.9rem;
+  }
+  .station-table tr:hover td {
+    background: rgba(56,189,248,0.05);
+  }
+
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 18px; margin-bottom: 30px;
+  }
+  .summary-card {
+    background: rgba(15, 23, 42, 0.7);
+    backdrop-filter: blur(20px);
+    border-radius: 14px;
+    padding: 20px;
+    border: 1px solid rgba(56,189,248,0.15);
+    text-align: center;
+    transition: all 0.4s ease;
+  }
+  .summary-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 20px 40px rgba(0,0,0,0.4), 0 0 30px rgba(56,189,248,0.15);
+    border-color: rgba(56,189,248,0.4);
+  }
+  .summary-label {
+    font-size: 0.72rem; color: #94A3B8;
+    text-transform: uppercase; letter-spacing: 1px;
+    margin-bottom: 10px;
+  }
+  .summary-value {
+    font-size: 1.6rem; font-weight: 800;
+    color: #38BDF8;
+    font-family: 'Courier New', monospace;
+  }
+  .summary-value.good { color: #10B981; }
+  .summary-value.bad { color: #EF4444; }
+  .summary-value.warn { color: #F59E0B; }
+  .summary-unit {
+    font-size: 0.75rem; color: #64748B; margin-top: 4px;
+  }
+
+  .canvas-wrapper {
+    background: rgba(5, 10, 20, 0.8);
+    backdrop-filter: blur(15px);
+    border-radius: 16px;
+    padding: 20px;
+    border: 1px solid rgba(56,189,248,0.2);
+    margin-bottom: 24px;
+  }
+  canvas.chart-canvas {
+    width: 100%; height: auto;
+    border-radius: 10px; display: block;
+  }
+
+  .formula-box {
+    background: rgba(34, 211, 238, 0.05);
+    border-left: 4px solid #22D3EE;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 24px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.95rem;
+    color: #38BDF8;
+    line-height: 1.7;
+  }
+  .formula-box .formula-label {
+    font-family: 'Times New Roman', serif;
+    color: #94A3B8;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+
+  .info-box {
+    background: rgba(34, 211, 238, 0.08);
+    border-left: 4px solid #22D3EE;
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+    color: #CBD5E1;
+    font-size: 0.92rem;
+    line-height: 1.7;
+  }
+  .info-box strong { color: #38BDF8; }
+  .info-box.warning {
+    background: rgba(245, 158, 11, 0.08);
+    border-left-color: #F59E0B;
+  }
+  .info-box.warning strong { color: #F59E0B; }
+  .info-box.success {
+    background: rgba(16, 185, 129, 0.08);
+    border-left-color: #10B981;
+  }
+  .info-box.success strong { color: #10B981; }
+
+  .liquid-btn {
+    position: relative; display: inline-block;
+    padding: 14px 36px; border: none;
+    border-radius: 50px;
+    background: linear-gradient(135deg, #38BDF8, #0EA5E9, #22D3EE);
+    background-size: 300% 300%;
+    color: #0A1628; font-size: 0.9rem;
+    font-weight: 800; letter-spacing: 1.5px;
+    text-transform: uppercase; cursor: none;
+    overflow: hidden;
+    transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+    box-shadow: 0 10px 30px rgba(56, 189, 248, 0.3), inset 0 2px 8px rgba(255, 255, 255, 0.3);
+    animation: liquidFlow 4s ease infinite;
+    z-index: 1;
+  }
+  @keyframes liquidFlow {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+  .liquid-btn::before {
+    content: '';
+    position: absolute; top: -50%; left: -50%;
+    width: 200%; height: 200%;
+    background: radial-gradient(circle, rgba(255,255,255,0.4) 0%, transparent 60%);
+    opacity: 0;
+    transition: opacity 0.5s ease, transform 0.6s ease;
+    transform: scale(0);
+    border-radius: 50%; z-index: -1;
+  }
+  .liquid-btn:hover::before {
+    opacity: 1; transform: scale(1.5);
+  }
+  .liquid-btn:hover {
+    transform: translateY(-5px) scale(1.05);
+    box-shadow: 0 20px 50px rgba(56, 189, 248, 0.5), 0 0 80px rgba(34, 211, 238, 0.3);
+  }
+
+  .footer {
+    text-align: center; padding: 50px 20px 30px;
+    color: #475569; font-size: 0.85rem;
+    letter-spacing: 1px; font-style: italic;
+    border-top: 1px solid rgba(56,189,248,0.1);
+    margin-top: 60px;
+  }
+  .footer span { color: #38BDF8; font-weight: 600; }
+
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-track { background: #0A1628; }
+  ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, #38BDF8, #22D3EE); border-radius: 10px; }
+
+  @media (max-width: 700px) {
+    .hero h1 { font-size: 2.2rem; }
+    .input-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="cursor-dot" id="cursorDot" style="left:-100px; top:-100px;"></div>
+<div class="cursor-ring" id="cursorRing" style="left:-100px; top:-100px;"></div>
+<canvas id="rainCanvas" class="rain-canvas"></canvas>
+<canvas id="waveCanvas" class="wave-canvas"></canvas>
+<canvas id="trailCanvas"></canvas>
+<div class="gradient-overlay"></div>
+<div class="grid-overlay"></div>
+
+<!-- ═══ PAGE 1: DASHBOARD ═══ -->
+<div class="page active" id="pageDashboard">
+  <div class="container">
+    <div class="page-header">
+      <h2>Future Rainfall Projection</h2>
+      <button class="back-btn" onclick="alert('Back — merge with main index.html')">← Back</button>
+    </div>
+
+    <div class="hero">
+      <div class="brand-badge">Module 7 — Statistical Forecasting</div>
+      <h1>Future Rainfall Projection</h1>
+      <div class="author-name">by Junaid Ali</div>
+      <p class="subtitle">Linear Trend + Prediction Intervals</p>
+      <p class="description">
+        Project future rainfall for the next 5–50 years using linear regression on historical data.
+        Includes prediction intervals, a slope significance test, and multi-chart visualization
+        for water resources planning and climate adaptation.
+      </p>
+    </div>
+
+    <div class="section-title">What This Module Does</div>
+    <div class="features-grid">
+      <div class="feature-card">
+        <h4>Linear Trend Extrapolation</h4>
+        <p>Fits a linear model and projects rainfall forward for user-defined horizon.</p>
+      </div>
+      <div class="feature-card">
+        <h4>Confidence Bands</h4>
+        <p>Provides prediction intervals (80–99%) showing the range of uncertainty.</p>
+      </div>
+      <div class="feature-card">
+        <h4>Multi-Decade Forecast</h4>
+        <p>Project rainfall decade-by-decade with cumulative totals.</p>
+      </div>
+      <div class="feature-card">
+        <h4>Rich Visualization</h4>
+        <p>Bar charts, area charts, pie charts, and combined trend plots.</p>
+      </div>
+    </div>
+
+    <div style="text-align: center; margin-top: 40px;">
+      <button class="liquid-btn" onclick="goToPage('pageInput')">
+        Start Projection →
+      </button>
+    </div>
+
+    <div class="footer">
+      Developed by <span>Junaid Ali</span> · Civil Engineering Research
+    </div>
+  </div>
+</div>
+
+<!-- ═══ PAGE 2: INPUT ═══ -->
+<div class="page" id="pageInput">
+  <div class="container">
+    <div class="page-header">
+      <h2>Future Rainfall Projection — Input</h2>
+      <button class="back-btn" onclick="goToPage('pageDashboard')">← Back</button>
+    </div>
+
+    <div class="info-box">
+      <strong>What data do you need?</strong> Historical annual rainfall (at least 10 years required, 15+ recommended). 
+      Enter <strong>year, rainfall</strong> for each year (one value per year). The tool will fit a linear trend and project forward.
+    </div>
+
+    <div class="input-panel">
+      <h3>Option 1: Upload CSV File</h3>
+      <div class="upload-box" onclick="document.getElementById('csvFile').click()">
+        <div class="upload-icon">📁</div>
+        <p>Click to upload CSV file</p>
+        <p style="font-size: 0.78rem; color: #64748B;">Required: year, rainfall</p>
+        <input type="file" id="csvFile" accept=".csv" onchange="handleCsvUpload(event)">
+      </div>
+      <div id="csvStatus" style="display: none; padding: 12px; background: rgba(34,211,238,0.1); border-radius: 8px; border-left: 3px solid #22D3EE; margin-top: 15px;">
+        <span style="color: #22D3EE; font-size: 0.9rem;">✅ CSV loaded: <span id="csvFileName"></span></span>
+      </div>
+    </div>
+
+    <div class="input-panel">
+      <h3>Option 2: Manual Entry</h3>
+      <textarea id="manualData" placeholder="1990, 850&#10;1991, 920&#10;1992, 780"></textarea>
+      <div style="display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap;">
+        <button class="liquid-btn" style="padding: 10px 24px; font-size: 0.82rem;" onclick="loadDemoData()">
+          Load Demo Data
+        </button>
+        <button class="liquid-btn" style="padding: 10px 24px; font-size: 0.82rem; background: linear-gradient(135deg, #EF4444, #DC2626);" onclick="document.getElementById('manualData').value = ''">
+          Clear
+        </button>
+      </div>
+    </div>
+
+    <div class="input-panel">
+      <h3>Projection Settings</h3>
+      <div class="input-row">
+        <div>
+          <label>Projection Horizon (5–50 years ahead)</label>
+          <input type="number" id="horizon" value="20" min="5" max="50">
+        </div>
+        <div>
+          <label>Confidence Level</label>
+          <select id="confidenceLevel">
+            <option value="0.80">80%</option>
+            <option value="0.90">90%</option>
+            <option value="0.95" selected>95% (standard)</option>
+            <option value="0.99">99%</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div style="text-align: center; margin-top: 30px;">
+      <button class="liquid-btn" onclick="runAnalysis()">
+        Run Projection →
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ PAGE 3: RESULTS ═══ -->
+<div class="page" id="pageResults">
+  <div class="container">
+    <div class="page-header">
+      <h2>Future Rainfall Projection — Results</h2>
+      <button class="back-btn" onclick="goToPage('pageInput')">← Back</button>
+    </div>
+
+    <div id="projectionVerdict"></div>
+
+    <div class="summary-grid" id="summary"></div>
+
+    <div class="section-title">📈 Historical + Projected Trend</div>
+    <div class="canvas-wrapper">
+      <canvas id="trendCanvas" class="chart-canvas" width="1200" height="600"></canvas>
+    </div>
+
+    <div class="section-title">📊 Decade-Wise Projection (Bar Chart)</div>
+    <div class="canvas-wrapper">
+      <canvas id="decadeBarCanvas" class="chart-canvas" width="1200" height="500"></canvas>
+    </div>
+
+    <div class="section-title">🥧 Historical vs Projected Distribution (Pie Chart)</div>
+    <div class="canvas-wrapper">
+      <canvas id="pieCanvas" class="chart-canvas" width="1000" height="500"></canvas>
+    </div>
+
+    <div class="section-title">🌊 Cumulative Rainfall (Area Chart)</div>
+    <div class="canvas-wrapper">
+      <canvas id="cumulativeCanvas" class="chart-canvas" width="1200" height="500"></canvas>
+    </div>
+
+    <div class="section-title">📉 Yearly Projection with Confidence Bands</div>
+    <div class="canvas-wrapper">
+      <canvas id="yearlyCanvas" class="chart-canvas" width="1200" height="550"></canvas>
+    </div>
+
+    <div class="section-title">Projection Formula</div>
+    <div class="formula-box" id="formulaBox"></div>
+
+    <div class="section-title">Detailed Projection Table</div>
+    <div class="input-panel">
+      <div style="overflow-x: auto;">
+        <table class="station-table" id="projectionTable">
+          <thead>
+            <tr>
+              <th>Year</th>
+              <th>Projected Rainfall (mm)</th>
+              <th>Lower Bound (mm)</th>
+              <th>Upper Bound (mm)</th>
+              <th>Range (± mm)</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div style="display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 14px; margin-top: 30px;">
+      <button class="liquid-btn" onclick="exportExcel()" style="margin-right: 0; background: linear-gradient(135deg, #10B981, #059669);">
+        Export Excel (Graphs + Data)
+      </button>
+      <button class="liquid-btn" onclick="exportGraphsZip()" style="margin-right: 0; background: linear-gradient(135deg, #A78BFA, #7C3AED);">
+        Graphs (PNG ZIP)
+      </button>
+      <button class="liquid-btn" onclick="saveResults()" style="margin-right: 0;">
+        Save Report (TXT)
+      </button>
+      <button class="liquid-btn" onclick="saveCSV()" style="margin-right: 0;">
+        Save Projection (CSV)
+      </button>
+      <button class="liquid-btn" onclick="goToPage('pageDashboard')" style="background: linear-gradient(135deg, #0EA5E9, #38BDF8);">
+        Back to Dashboard
+      </button>
+    </div>
+
+    <div class="footer">
+      Developed by <span>Junaid Ali</span> · Civil Engineering Research
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══ SAFE EVENT LISTENERS ═══ */
+document.addEventListener('DOMContentLoaded', function() {
+  
+  /* ═══ CURSOR + TRAIL ═══ */
+  const cursorDot = document.getElementById('cursorDot');
+  const cursorRing = document.getElementById('cursorRing');
+  const trailCanvas = document.getElementById('trailCanvas');
+  const tCtx = trailCanvas.getContext('2d');
+  let trailParticles = [];
+
+  function resizeTrail() {
+    trailCanvas.width = window.innerWidth;
+    trailCanvas.height = window.innerHeight;
+  }
+  resizeTrail();
+  window.addEventListener('resize', resizeTrail);
+
+  document.addEventListener('mousemove', (e) => {
+    cursorDot.style.left = e.clientX + 'px';
+    cursorDot.style.top = e.clientY + 'px';
+    cursorRing.style.left = e.clientX + 'px';
+    cursorRing.style.top = e.clientY + 'px';
+    for (let i = 0; i < 2; i++) {
+      trailParticles.push({
+        x: e.clientX, y: e.clientY,
+        vx: (Math.random() - 0.5) * 3,
+        vy: (Math.random() - 0.5) * 3,
+        life: 1, size: Math.random() * 4 + 2,
+        color: Math.random() > 0.5 ? '56, 189, 248' : '34, 211, 238'
+      });
+    }
+  });
+
+  document.addEventListener('mousedown', (e) => {
+    cursorRing.classList.add('click');
+    for (let i = 0; i < 15; i++) {
+      trailParticles.push({
+        x: e.clientX,
+        y: e.clientY,
+        vx: (Math.random() - 0.5) * 8,
+        vy: (Math.random() - 0.5) * 8,
+        life: 1, size: Math.random() * 6 + 3,
+        color: '34, 211, 238'
+      });
+    }
+  });
+  document.addEventListener('mouseup', () => cursorRing.classList.remove('click'));
+
+  document.querySelectorAll('button, .liquid-btn, input, .upload-box, .back-btn, .feature-card, textarea, select').forEach(el => {
+    el.addEventListener('mouseenter', () => cursorRing.classList.add('hover'));
+    el.addEventListener('mouseleave', () => cursorRing.classList.remove('hover'));
+  });
+
+  function animateTrail() {
+    tCtx.clearRect(0, 0, trailCanvas.width, trailCanvas.height);
+    trailParticles = trailParticles.filter(p => p.life > 0);
+    trailParticles.forEach(p => {
+      p.x += p.vx; p.y += p.vy;
+      p.life -= 0.025; p.size *= 0.97;
+      tCtx.beginPath();
+      tCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      tCtx.fillStyle = `rgba(${p.color}, ${p.life * 0.8})`;
+      tCtx.shadowColor = `rgba(${p.color}, ${p.life})`;
+      tCtx.shadowBlur = 15;
+      tCtx.fill();
+      tCtx.shadowBlur = 0;
+    });
+    requestAnimationFrame(animateTrail);
+  }
+  animateTrail();
+
+  /* ═══ RAIN ═══ */
+  const rainCanvas = document.getElementById('rainCanvas');
+  const rCtx = rainCanvas.getContext('2d');
+  let raindrops = [];
+  function resizeRain() {
+    rainCanvas.width = window.innerWidth;
+    rainCanvas.height = window.innerHeight;
+  }
+  resizeRain();
+  window.addEventListener('resize', resizeRain);
+  class Raindrop {
+    constructor() { this.reset(); }
+    reset() {
+      this.x = Math.random() * rainCanvas.width;
+      this.y = Math.random() * -rainCanvas.height;
+      this.length = Math.random() * 20 + 10;
+      this.speed = Math.random() * 3 + 2;
+      this.opacity = Math.random() * 0.3 + 0.15;
+      this.width = Math.random() * 1.5 + 0.5;
+    }
+    update() { this.y += this.speed; if (this.y > rainCanvas.height + 20) this.reset(); }
+    draw() {
+      rCtx.beginPath();
+      rCtx.strokeStyle = `rgba(56, 189, 248, ${this.opacity})`;
+      rCtx.lineWidth = this.width;
+      rCtx.lineCap = 'round';
+      rCtx.moveTo(this.x, this.y);
+      rCtx.lineTo(this.x - 1, this.y + this.length);
+      rCtx.stroke();
+    }
+  }
+  for (let i = 0; i < 120; i++) raindrops.push(new Raindrop());
+  function animateRain() {
+    rCtx.clearRect(0, 0, rainCanvas.width, rainCanvas.height);
+    raindrops.forEach(r => { r.update(); r.draw(); });
+    requestAnimationFrame(animateRain);
+  }
+  animateRain();
+
+  /* ═══ WAVES ═══ */
+  const waveCanvas = document.getElementById('waveCanvas');
+  const wCtx = waveCanvas.getContext('2d');
+  let waveOffset = 0;
+  function resizeWave() {
+    waveCanvas.width = window.innerWidth;
+    waveCanvas.height = window.innerHeight;
+  }
+  resizeWave();
+  window.addEventListener('resize', resizeWave);
+  function drawWave(yOffset, amplitude, wavelength, color, speed, opacity) {
+    wCtx.beginPath();
+    wCtx.moveTo(0, waveCanvas.height);
+    for (let x = 0; x <= waveCanvas.width; x += 5) {
+      const y = yOffset + Math.sin((x + waveOffset * speed) / wavelength) * amplitude;
+      wCtx.lineTo(x, y);
+    }
+    wCtx.lineTo(waveCanvas.width, waveCanvas.height);
+    wCtx.closePath();
+    wCtx.fillStyle = color;
+    wCtx.globalAlpha = opacity;
+    wCtx.fill();
+    wCtx.globalAlpha = 1;
+  }
+  function animateWaves() {
+    wCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
+    drawWave(waveCanvas.height - 60, 25, 200, '#0EA5E9', 1, 0.15);
+    drawWave(waveCanvas.height - 40, 30, 250, '#38BDF8', 0.8, 0.12);
+    drawWave(waveCanvas.height - 20, 20, 180, '#22D3EE', 1.2, 0.10);
+    waveOffset += 1;
+    requestAnimationFrame(animateWaves);
+  }
+  animateWaves();
+});
+
+/* ═══ NAVIGATION ═══ */
+let currentPage = 'pageDashboard';
+let navLocked = false;
+function goToPage(pageId) {
+  if (navLocked || pageId === currentPage) return;   // prevents double-click glitches
+  navLocked = true;
+  const current = document.getElementById(currentPage);
+  const next = document.getElementById(pageId);
+  current.classList.remove('active');
+  current.classList.add('exit-left');
+  setTimeout(() => {
+    current.classList.remove('exit-left');
+    next.classList.add('active');
+    currentPage = pageId;
+    next.scrollTop = 0;
+    navLocked = false;
+  }, 500);
+}
+
+/* ═══ CSV UPLOAD ═══ */
+function handleCsvUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    document.getElementById('manualData').value = e.target.result;
+    document.getElementById('csvStatus').style.display = 'block';
+    document.getElementById('csvFileName').textContent = file.name;
+  };
+  reader.readAsText(file);
+  event.target.value = '';   // allows re-uploading the same file
+}
+
+function loadDemoData() {
+  // 30 years with slight upward trend
+  const demo = `1994, 850
+1995, 920
+1996, 780
+1997, 890
+1998, 1050
+1999, 940
+2000, 1020
+2001, 1100
+2002, 1250
+2003, 1180
+2004, 1150
+2005, 1220
+2006, 1280
+2007, 1420
+2008, 1350
+2009, 1500
+2010, 1450
+2011, 1520
+2012, 1380
+2013, 1550
+2014, 1620
+2015, 1480
+2016, 1650
+2017, 1720
+2018, 1680
+2019, 1750
+2020, 1850
+2021, 1820
+2022, 1900
+2023, 1950`;
+  document.getElementById('manualData').value = demo;
+}
+
+/* ═══ PARSE DATA ═══ */
+function parseData() {
+  const text = document.getElementById('manualData').value.trim();
+  if (!text) {
+    alert('Please enter or upload data first.');
+    return null;
+  }
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  const data = [];
+  for (const line of lines) {
+    const parts = line.split(/[,;\t\s]+/).map(p => p.trim()).filter(p => p !== '');
+    if (parts.length < 2) continue;
+    const year = parseInt(parts[0], 10);
+    const rainfall = parseFloat(parts[1]);
+    if (isNaN(year) || isNaN(rainfall)) continue;   // also skips header rows
+    if (rainfall < 0) {
+      alert(`Invalid data: negative rainfall (${rainfall}) found for year ${year}.`);
+      return null;
+    }
+    data.push({ year, rainfall });
+  }
+  data.sort((a, b) => a.year - b.year);
+
+  const dup = data.find((d, i) => i > 0 && d.year === data[i - 1].year);
+  if (dup) {
+    alert(`Duplicate year found (${dup.year}). Please provide exactly one value per year (e.g. annual totals).`);
+    return null;
+  }
+  return data;
+}
+
+/* ═══ STATISTICAL HELPERS (exact Student-t via incomplete beta) ═══ */
+function lgamma(xx) {
+  const c = [76.18009172947146, -86.50532032941677, 24.01409824083091,
+             -1.231739572450155, 0.1208650973866179e-2, -0.5395239384953e-5];
+  let x = xx, y = xx, tmp = x + 5.5;
+  tmp -= (x + 0.5) * Math.log(tmp);
+  let ser = 1.000000000190015;
+  for (let j = 0; j < 6; j++) ser += c[j] / ++y;
+  return -tmp + Math.log(2.5066282746310005 * ser / x);
+}
+function betacf(a, b, x) {
+  const MAXIT = 300, EPS = 3e-14, FPMIN = 1e-300;
+  const qab = a + b, qap = a + 1, qam = a - 1;
+  let c = 1, d = 1 - qab * x / qap;
+  if (Math.abs(d) < FPMIN) d = FPMIN;
+  d = 1 / d;
+  let h = d;
+  for (let m = 1; m <= MAXIT; m++) {
+    const m2 = 2 * m;
+    let aa = m * (b - m) * x / ((qam + m2) * (a + m2));
+    d = 1 + aa * d; if (Math.abs(d) < FPMIN) d = FPMIN;
+    c = 1 + aa / c; if (Math.abs(c) < FPMIN) c = FPMIN;
+    d = 1 / d; h *= d * c;
+    aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2));
+    d = 1 + aa * d; if (Math.abs(d) < FPMIN) d = FPMIN;
+    c = 1 + aa / c; if (Math.abs(c) < FPMIN) c = FPMIN;
+    d = 1 / d;
+    const del = d * c;
+    h *= del;
+    if (Math.abs(del - 1) < EPS) break;
+  }
+  return h;
+}
+function incBeta(x, a, b) {
+  if (x <= 0) return 0;
+  if (x >= 1) return 1;
+  const bt = Math.exp(lgamma(a + b) - lgamma(a) - lgamma(b) + a * Math.log(x) + b * Math.log(1 - x));
+  if (x < (a + 1) / (a + b + 2)) return bt * betacf(a, b, x) / a;
+  return 1 - bt * betacf(b, a, 1 - x) / b;
+}
+function tCDF(t, df) {
+  const x = df / (df + t * t);
+  const p = 0.5 * incBeta(x, df / 2, 0.5);
+  return t > 0 ? 1 - p : p;
+}
+/* two-sided critical t for a given confidence level */
+function tCritical(conf, df) {
+  const target = 1 - (1 - conf) / 2;
+  let lo = 0, hi = 1000;
+  for (let i = 0; i < 200; i++) {
+    const mid = (lo + hi) / 2;
+    if (tCDF(mid, df) < target) lo = mid; else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+/* two-sided p-value for a t statistic */
+function tPValue(t, df) {
+  if (!isFinite(t)) return 0;
+  return incBeta(df / (df + t * t), df / 2, 0.5);
+}
+function fmtP(p) { return p < 0.0001 ? '< 0.0001' : p.toFixed(4); }
+function pText(p) { return p < 0.0001 ? '< 0.0001' : '= ' + p.toFixed(4); }
+
+/* ═══ LINEAR REGRESSION (centred on mean year for numerical stability) ═══ */
+function linearRegression(data) {
+  const n = data.length;
+  const xm = data.reduce((s, d) => s + d.year, 0) / n;
+  const ym = data.reduce((s, d) => s + d.rainfall, 0) / n;
+  let Sxx = 0, Sxy = 0, Syy = 0;
+  data.forEach(d => {
+    const dx = d.year - xm, dy = d.rainfall - ym;
+    Sxx += dx * dx; Sxy += dx * dy; Syy += dy * dy;
+  });
+  const slope = Sxx === 0 ? 0 : Sxy / Sxx;
+  const intercept = ym - slope * xm;
+  let ssRes = 0;
+  data.forEach(d => {
+    const r = d.rainfall - (ym + slope * (d.year - xm));
+    ssRes += r * r;
+  });
+  const df = n - 2;
+  const stdError = Math.sqrt(ssRes / df);
+  const r2 = Syy === 0 ? 0 : Math.max(0, 1 - ssRes / Syy);
+  const seSlope = Sxx === 0 ? 0 : stdError / Math.sqrt(Sxx);
+  const tSlope = seSlope === 0 ? (slope === 0 ? 0 : Infinity) : slope / seSlope;
+  const pSlope = seSlope === 0 ? (slope === 0 ? 1 : 0) : tPValue(tSlope, df);
+  return { slope, intercept, stdError, xm, ym, Sxx, r2, seSlope, tSlope, pSlope, df, n };
+}
+
+/* point prediction with prediction interval (values floored at 0 mm) */
+function predictPoint(reg, year, tCrit) {
+  const raw = reg.ym + reg.slope * (year - reg.xm);
+  const se = reg.stdError * Math.sqrt(1 + 1 / reg.n + Math.pow(year - reg.xm, 2) / reg.Sxx);
+  const margin = tCrit * se;
+  return {
+    year, raw,
+    rainfall: Math.max(0, raw),
+    lower: Math.max(0, raw - margin),
+    upper: Math.max(0, raw + margin),
+    margin
+  };
+}
+
+/* ═══ CORE COMPUTATION (pure, no DOM) ═══ */
+function computeProjection(data, horizon, confidence) {
+  const reg = linearRegression(data);
+  const tCrit = tCritical(confidence, reg.df);
+  const firstYear = data[0].year;
+  const lastYear = data[data.length - 1].year;
+  const maxYear = lastYear + horizon;
+
+  const projections = [];
+  for (let y = lastYear + 1; y <= maxYear; y++) projections.push(predictPoint(reg, y, tCrit));
+  const bridge = predictPoint(reg, lastYear, tCrit);   // used only to connect the chart lines
+
+  // Decade-wise aggregation (historical, mixed, or projected decades)
+  const map = {};
+  const add = (year, val, proj) => {
+    const dec = Math.floor(year / 10) * 10;
+    if (!map[dec]) map[dec] = { decade: dec, total: 0, count: 0, hist: 0, proj: 0 };
+    map[dec].total += val; map[dec].count++;
+    if (proj) map[dec].proj++; else map[dec].hist++;
+  };
+  data.forEach(d => add(d.year, d.rainfall, false));
+  projections.forEach(p => add(p.year, p.rainfall, true));
+  const decades = Object.values(map).sort((a, b) => a.decade - b.decade).map(d => ({
+    decade: d.decade, total: d.total, count: d.count,
+    avg: d.total / d.count,
+    kind: d.proj === 0 ? 'hist' : (d.hist === 0 ? 'proj' : 'mixed')
+  }));
+
+  const historicalMean = data.reduce((s, d) => s + d.rainfall, 0) / data.length;
+  const projectedMean = projections.reduce((s, p) => s + p.rainfall, 0) / projections.length;
+  const change = projectedMean - historicalMean;
+  const changePct = historicalMean > 0 ? (change / historicalMean) * 100 : 0;
+  const negativeFloor = projections.some(p => p.raw < 0);
+
+  return {
+    data, projections, bridge, decades, reg, horizon, confidence, tCrit,
+    historicalMean, projectedMean, change, changePct,
+    firstYear, lastYear, maxYear, negativeFloor
+  };
+}
+
+/* ═══ RUN ANALYSIS ═══ */
+let analysisData = null;
+
+function runAnalysis() {
+  const data = parseData();
+  if (!data) return;
+  if (data.length < 10) {
+    alert('Please provide at least 10 years of data for reliable projection.');
+    return;
+  }
+
+  let horizon = parseInt(document.getElementById('horizon').value, 10);
+  if (isNaN(horizon)) horizon = 20;
+  horizon = Math.min(50, Math.max(5, horizon));
+  document.getElementById('horizon').value = horizon;
+  const confidence = parseFloat(document.getElementById('confidenceLevel').value) || 0.95;
+
+  const A = computeProjection(data, horizon, confidence);
+  analysisData = A;
+  const { reg, projections, historicalMean, projectedMean, change, changePct, tCrit } = A;
+  const confPct = (confidence * 100).toFixed(0);
+
+  // ── Verdict ──
+  const sig = reg.pSlope < (1 - confidence);
+  let verdictClass = '', verdictEmoji, verdictText;
+  const sign = changePct > 0 ? '+' : '';
+  if (!sig) {
+    verdictEmoji = 'ℹ️';
+    verdictText = `The fitted linear trend (<strong>${reg.slope > 0 ? '+' : ''}${reg.slope.toFixed(2)} mm/year</strong>) is 
+      <strong>not statistically significant</strong> at the ${confPct}% level (p ${pText(reg.pSlope)}, R² = ${reg.r2.toFixed(3)}). 
+      The projected mean of ${projectedMean.toFixed(0)} mm differs by ${sign}${changePct.toFixed(1)}% from the historical mean, 
+      but this change is within natural variability — treat the projection with caution.`;
+  } else if (Math.abs(changePct) < 2) {
+    verdictClass = 'success';
+    verdictEmoji = '✅';
+    verdictText = `Rainfall is projected to remain <strong>stable</strong> over the next ${horizon} years. 
+      Projected mean: <strong>${projectedMean.toFixed(0)} mm</strong> (change: ${sign}${changePct.toFixed(1)}%).`;
+  } else if (change > 0) {
+    verdictClass = 'warning';
+    verdictEmoji = '📈';
+    verdictText = `Rainfall is projected to <strong>increase</strong> by 
+      <strong>${changePct.toFixed(1)}%</strong> over the next ${horizon} years 
+      (${historicalMean.toFixed(0)} → ${projectedMean.toFixed(0)} mm/year). Plan for higher runoff.`;
+  } else {
+    verdictClass = 'warning';
+    verdictEmoji = '📉';
+    verdictText = `Rainfall is projected to <strong>decrease</strong> by 
+      <strong>${Math.abs(changePct).toFixed(1)}%</strong> over the next ${horizon} years 
+      (${historicalMean.toFixed(0)} → ${projectedMean.toFixed(0)} mm/year). Plan for water stress.`;
+  }
+
+  const cautions = [];
+  if (reg.n < 15) cautions.push(`Only ${reg.n} years of data are available — 15+ years are recommended for a reliable trend.`);
+  if (horizon > reg.n / 2) cautions.push(`The projection horizon (${horizon} years) is long relative to the record (${reg.n} years); uncertainty grows quickly with extrapolation.`);
+  if (A.negativeFloor) cautions.push('The linear trend produces negative rainfall in some years; those values were floored at 0 mm — a linear model is not suitable for this horizon.');
+  cautions.push('Linear extrapolation assumes the historical trend continues unchanged; it is a statistical projection, not a climate-model forecast.');
+
+  document.getElementById('projectionVerdict').innerHTML = `
+    <div class="info-box ${verdictClass}" style="font-size: 1rem; padding: 22px 24px;">
+      <div style="font-size: 1.5rem; margin-bottom: 10px;">${verdictEmoji}</div>
+      ${verdictText}
+      <div style="margin-top: 14px; font-size: 0.85rem; color: #94A3B8; line-height: 1.6;">
+        ${cautions.map(c => '• ' + c).join('<br>')}
+      </div>
+    </div>
+  `;
+
+  // ── Summary ──
+  document.getElementById('summary').innerHTML = `
+    <div class="summary-card">
+      <div class="summary-label">Historical Mean</div>
+      <div class="summary-value">${historicalMean.toFixed(0)}</div>
+      <div class="summary-unit">mm/year</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">Projected Mean</div>
+      <div class="summary-value ${change > 0 ? 'warn' : 'good'}">${projectedMean.toFixed(0)}</div>
+      <div class="summary-unit">mm/year</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">Change</div>
+      <div class="summary-value ${change > 0 ? 'warn' : 'good'}">${sign}${changePct.toFixed(1)}%</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">Trend Rate</div>
+      <div class="summary-value">${reg.slope > 0 ? '+' : ''}${reg.slope.toFixed(2)}</div>
+      <div class="summary-unit">mm/year</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">R²</div>
+      <div class="summary-value">${reg.r2.toFixed(3)}</div>
+      <div class="summary-unit">goodness of fit</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">Trend p-value</div>
+      <div class="summary-value ${sig ? 'warn' : 'good'}">${fmtP(reg.pSlope)}</div>
+      <div class="summary-unit">${sig ? 'significant' : 'not significant'} at ${confPct}%</div>
+    </div>
+  `;
+
+  // ── Formula ──
+  const ex = projections[Math.min(4, projections.length - 1)];
+  document.getElementById('formulaBox').innerHTML = `
+    <div class="formula-label">Linear Regression Model</div>
+    ŷ = a + b × x &nbsp;&nbsp; (x = year)
+    <br><br>
+    n = ${reg.n} years, df = ${reg.df}<br>
+    b (slope) = <strong>${reg.slope.toFixed(4)}</strong> mm/year &nbsp;(SE = ${reg.seSlope.toFixed(4)}, t = ${isFinite(reg.tSlope) ? reg.tSlope.toFixed(3) : '∞'}, p ${pText(reg.pSlope)})<br>
+    a (intercept) = ${reg.intercept.toFixed(2)}<br>
+    R² = ${reg.r2.toFixed(4)}<br>
+    Standard Error of estimate (s) = ${reg.stdError.toFixed(2)} mm<br>
+    t-critical (${confPct}%, df = ${reg.df}) = ${tCrit.toFixed(3)}
+    <br><br>
+    <div class="formula-label">Prediction Interval</div>
+    ŷ ± t × s × √(1 + 1/n + (x − x̄)² / Σ(x − x̄)²)<br>
+    x̄ = ${reg.xm.toFixed(2)}, &nbsp;Σ(x − x̄)² = ${reg.Sxx.toFixed(2)}
+    <br><br>
+    <div class="formula-label">Worked Example — Year ${ex.year}</div>
+    ŷ = ${ex.raw.toFixed(1)} mm<br>
+    Margin = ±${ex.margin.toFixed(1)} mm &nbsp;→&nbsp; [${ex.lower.toFixed(1)}, ${ex.upper.toFixed(1)}] mm
+    <br><br>
+    <div class="formula-label">Projection Summary</div>
+    Historical Mean: ${historicalMean.toFixed(1)} mm/year<br>
+    Projected Mean: ${projectedMean.toFixed(1)} mm/year<br>
+    Change: ${change > 0 ? '+' : ''}${change.toFixed(1)} mm (${sign}${changePct.toFixed(1)}%)
+  `;
+
+  // ── Table ──
+  const tbody = document.querySelector('#projectionTable tbody');
+  tbody.innerHTML = '';
+  projections.forEach(p => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="color: #38BDF8; font-weight: 600;">${p.year}</td>
+      <td style="color: #22D3EE; font-weight: 700;">${p.rainfall.toFixed(1)}</td>
+      <td style="color: #94A3B8;">${p.lower.toFixed(1)}</td>
+      <td style="color: #94A3B8;">${p.upper.toFixed(1)}</td>
+      <td style="color: #F59E0B;">± ${p.margin.toFixed(1)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  goToPage('pageResults');
+  setTimeout(() => {
+    drawTrendChart();
+    drawDecadeBar();
+    drawPieChart();
+    drawCumulativeChart();
+    drawYearlyChart();
+  }, 600);
+}
+
+/* ═══ CANVAS HELPERS (crisp on high-DPI screens) ═══ */
+function prepCanvas(id) {
+  const c = document.getElementById(id);
+  if (!c.dataset.w) { c.dataset.w = c.width; c.dataset.h = c.height; }
+  const W = +c.dataset.w, H = +c.dataset.h;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  c.width = W * dpr;
+  c.height = H * dpr;
+  const ctx = c.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.textBaseline = 'alphabetic';
+  return { ctx, W, H };
+}
+function paintBg(ctx, W, H) {
+  const bg = ctx.createLinearGradient(0, 0, W, H);
+  bg.addColorStop(0, 'rgba(5, 10, 20, 0.98)');
+  bg.addColorStop(1, 'rgba(10, 20, 35, 0.98)');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+}
+function paintGrid(ctx, W, H) {
+  ctx.strokeStyle = 'rgba(56, 189, 248, 0.06)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < W; i += 50) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, H); ctx.stroke(); }
+  for (let i = 0; i < H; i += 50) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(W, i); ctx.stroke(); }
+}
+function paintAxes(ctx, W, H, pad) {
+  ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(pad, H - pad - 30); ctx.lineTo(W - pad / 2, H - pad - 30); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(pad, H - pad - 30); ctx.lineTo(pad, pad / 2); ctx.stroke();
+}
+function paintAxisLabels(ctx, W, H, pad, xLabel, yLabel) {
+  ctx.fillStyle = '#94A3B8';
+  ctx.font = '14px Times New Roman';
+  ctx.textAlign = 'center';
+  ctx.fillText(xLabel, W / 2, H - pad + 5);
+  ctx.save();
+  ctx.translate(22, H / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText(yLabel, 0, 0);
+  ctx.restore();
+}
+function paintTitle(ctx, W, text) {
+  ctx.fillStyle = '#38BDF8';
+  ctx.font = 'bold 20px Times New Roman';
+  ctx.textAlign = 'center';
+  ctx.fillText(text, W / 2, 30);
+}
+function paintYTicks(ctx, pad, minVal, maxVal, sy, steps) {
+  ctx.font = '12px Times New Roman';
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= steps; i++) {
+    const val = minVal + (maxVal - minVal) * (i / steps);
+    ctx.fillStyle = '#94A3B8';
+    ctx.fillText(Math.round(val).toString(), pad - 8, sy(val) + 4);
+  }
+}
+function paintXTicks(ctx, H, pad, minYear, maxYear, sx) {
+  ctx.font = '12px Times New Roman';
+  ctx.textAlign = 'center';
+  const range = maxYear - minYear;
+  const step = Math.max(1, Math.round(range / 10));
+  for (let y = minYear; y <= maxYear; y += step) {
+    ctx.fillStyle = '#94A3B8';
+    ctx.fillText(y.toString(), sx(y), H - pad - 10);
+  }
+}
+function paintLegendBox(ctx, x, y, w, h) {
+  ctx.fillStyle = 'rgba(5, 10, 20, 0.75)';
+  ctx.strokeStyle = 'rgba(56, 189, 248, 0.2)';
+  ctx.lineWidth = 1;
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeRect(x, y, w, h);
+}
+
+/* ═══ CHART 1: HISTORICAL + PROJECTED TREND ═══ */
+function drawTrendChart() {
+  if (!analysisData) return;
+  const { ctx, W, H } = prepCanvas('trendCanvas');
+  const pad = 90;
+  paintBg(ctx, W, H);
+  paintGrid(ctx, W, H);
+
+  const A = analysisData;
+  const data = A.data, proj = A.projections, reg = A.reg;
+  const minYear = A.firstYear, maxYear = A.maxYear;
+  const yearRange = (maxYear - minYear) || 1;
+
+  const vals = data.map(d => d.rainfall);
+  proj.forEach(p => vals.push(p.lower, p.upper));
+  const maxVal = Math.max(...vals) * 1.08;
+  const minVal = Math.max(0, Math.min(...vals) * 0.9);
+  const span = (maxVal - minVal) || 1;
+
+  const baseY = H - pad - 30;
+  const sx = (year) => pad + ((year - minYear) / yearRange) * (W - 2 * pad);
+  const sy = (val) => baseY - ((val - minVal) / span) * (H - 2 * pad - 40);
+
+  paintAxes(ctx, W, H, pad);
+  paintAxisLabels(ctx, W, H, pad, 'Year', 'Rainfall (mm)');
+  paintYTicks(ctx, pad, minVal, maxVal, sy, 5);
+  paintXTicks(ctx, H, pad, minYear, maxYear, sx);
+
+  // Prediction band (starts at the last observed year so it joins the history)
+  const band = [A.bridge, ...proj];
+  ctx.fillStyle = 'rgba(167, 139, 250, 0.15)';
+  ctx.beginPath();
+  band.forEach((p, i) => {
+    if (i === 0) ctx.moveTo(sx(p.year), sy(p.upper));
+    else ctx.lineTo(sx(p.year), sy(p.upper));
+  });
+  for (let i = band.length - 1; i >= 0; i--) ctx.lineTo(sx(band[i].year), sy(band[i].lower));
+  ctx.closePath();
+  ctx.fill();
+
+  // Fitted regression line over the historical period
+  const fit = (y) => reg.ym + reg.slope * (y - reg.xm);
+  ctx.strokeStyle = 'rgba(34, 211, 238, 0.85)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([3, 4]);
+  ctx.beginPath();
+  ctx.moveTo(sx(A.firstYear), sy(fit(A.firstYear)));
+  ctx.lineTo(sx(A.lastYear), sy(fit(A.lastYear)));
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Historical line
+  ctx.strokeStyle = '#38BDF8';
+  ctx.lineWidth = 2;
+  ctx.shadowColor = '#38BDF8';
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  data.forEach((d, i) => {
+    if (i === 0) ctx.moveTo(sx(d.year), sy(d.rainfall));
+    else ctx.lineTo(sx(d.year), sy(d.rainfall));
+  });
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Historical points
+  data.forEach(d => {
+    ctx.beginPath();
+    ctx.arc(sx(d.year), sy(d.rainfall), 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#38BDF8';
+    ctx.fill();
+    ctx.strokeStyle = '#0A1628';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+
+  // Projection line (continues from the fitted value at the last observed year)
+  ctx.strokeStyle = '#A78BFA';
+  ctx.lineWidth = 3;
+  ctx.setLineDash([8, 5]);
+  ctx.shadowColor = '#A78BFA';
+  ctx.shadowBlur = 12;
+  ctx.beginPath();
+  band.forEach((p, i) => {
+    if (i === 0) ctx.moveTo(sx(p.year), sy(p.rainfall));
+    else ctx.lineTo(sx(p.year), sy(p.rainfall));
+  });
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.shadowBlur = 0;
+
+  proj.forEach(p => {
+    ctx.beginPath();
+    ctx.arc(sx(p.year), sy(p.rainfall), 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#A78BFA';
+    ctx.fill();
+  });
+
+  // "Now" marker
+  const nowX = sx(A.lastYear);
+  ctx.strokeStyle = 'rgba(245, 158, 11, 0.6)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(nowX, 62);
+  ctx.lineTo(nowX, baseY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#F59E0B';
+  ctx.font = 'bold 12px Times New Roman';
+  ctx.textAlign = 'center';
+  ctx.fillText('Now', nowX, 56);
+
+  paintTitle(ctx, W, `Rainfall Trend + ${A.horizon}-Year Projection`);
+
+  // Legend
+  const confPct = (A.confidence * 100).toFixed(0);
+  const bx = pad + 15, by = 62;
+  paintLegendBox(ctx, bx, by, 220, 100);
+  const lx = bx + 18, ly = by + 20;
+  ctx.textAlign = 'left';
+  ctx.font = '13px Times New Roman';
+
+  ctx.fillStyle = '#38BDF8';
+  ctx.beginPath(); ctx.arc(lx, ly, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#94A3B8';
+  ctx.fillText('Historical', lx + 16, ly + 5);
+
+  ctx.strokeStyle = 'rgba(34, 211, 238, 0.85)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([3, 4]);
+  ctx.beginPath(); ctx.moveTo(lx - 8, ly + 22); ctx.lineTo(lx + 8, ly + 22); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#94A3B8';
+  ctx.fillText('Fitted linear trend', lx + 16, ly + 27);
+
+  ctx.fillStyle = '#A78BFA';
+  ctx.beginPath(); ctx.arc(lx, ly + 47, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#94A3B8';
+  ctx.fillText('Projected', lx + 16, ly + 52);
+
+  ctx.fillStyle = 'rgba(167, 139, 250, 0.35)';
+  ctx.fillRect(lx - 7, ly + 65, 14, 12);
+  ctx.fillStyle = '#94A3B8';
+  ctx.fillText(`${confPct}% prediction band`, lx + 16, ly + 75);
+}
+
+/* ═══ CHART 2: DECADE BAR CHART ═══ */
+function drawDecadeBar() {
+  if (!analysisData) return;
+  const { ctx, W, H } = prepCanvas('decadeBarCanvas');
+  const pad = 90;
+  paintBg(ctx, W, H);
+
+  const decades = analysisData.decades;
+  const maxVal = (Math.max(...decades.map(d => d.avg)) * 1.2) || 1;
+  const baseY = H - pad - 30;
+  const plotW = W - 2 * pad;
+  const plotH = H - 2 * pad - 40;
+  const slot = plotW / decades.length;
+  const barWidth = slot * 0.6;
+  const barGap = slot * 0.4;
+
+  // Axes
+  ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(pad, baseY); ctx.lineTo(W - pad / 2, baseY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(pad, baseY); ctx.lineTo(pad, pad / 2); ctx.stroke();
+
+  // Y-ticks + axis label
+  ctx.fillStyle = '#94A3B8';
+  ctx.font = '12px Times New Roman';
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 5; i++) {
+    const val = (maxVal / 5) * i;
+    ctx.fillText(Math.round(val).toString(), pad - 8, baseY - (val / maxVal) * plotH + 4);
+  }
+  ctx.save();
+  ctx.translate(22, H / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.font = '14px Times New Roman';
+  ctx.textAlign = 'center';
+  ctx.fillText('Average Rainfall (mm/year)', 0, 0);
+  ctx.restore();
+
+  const palette = {
+    hist:  ['#38BDF8', '#0EA5E9'],
+    mixed: ['#A78BFA', '#38BDF8'],
+    proj:  ['#A78BFA', '#7C3AED']
+  };
+
+  decades.forEach((d, i) => {
+    const x = pad + i * (barWidth + barGap) + barGap / 2;
+    const barH = (d.avg / maxVal) * plotH;
+    const y = baseY - barH;
+    const [c1, c2] = palette[d.kind];
+
+    const grad = ctx.createLinearGradient(0, y, 0, baseY);
+    grad.addColorStop(0, c1);
+    grad.addColorStop(1, c2);
+    ctx.fillStyle = grad;
+    ctx.shadowColor = c1;
+    ctx.shadowBlur = 15;
+    ctx.fillRect(x, y, barWidth, barH);
+    ctx.shadowBlur = 0;
+
+    ctx.fillStyle = '#E2E8F0';
+    ctx.font = 'bold 14px Times New Roman';
+    ctx.textAlign = 'center';
+    ctx.fillText(Math.round(d.avg).toString(), x + barWidth / 2, y - 8);
+
+    ctx.fillStyle = '#94A3B8';
+    ctx.font = '13px Times New Roman';
+    ctx.fillText(`${d.decade}s`, x + barWidth / 2, baseY + 20);
+
+    // partial decade → show how many years the average is based on
+    if (d.count < 10) {
+      ctx.fillStyle = '#64748B';
+      ctx.font = '11px Times New Roman';
+      ctx.fillText(`(${d.count} yrs)`, x + barWidth / 2, baseY + 34);
+    }
+
+    if (d.kind !== 'hist') {
+      const label = d.kind === 'proj' ? 'PROJECTED' : 'PART PROJ.';
+      ctx.fillStyle = 'rgba(167, 139, 250, 0.3)';
+      ctx.fillRect(x + barWidth / 2 - 32, baseY + 40, 64, 16);
+      ctx.fillStyle = '#A78BFA';
+      ctx.font = 'bold 10px Times New Roman';
+      ctx.fillText(label, x + barWidth / 2, baseY + 52);
+    }
+  });
+
+  paintTitle(ctx, W, 'Decade-Wise Average Rainfall (Historical vs Projected)');
+
+  // Legend
+  const items = [['Historical', '#38BDF8'], ['Mixed decade', '#8B9BFA'], ['Projected', '#A78BFA']];
+  ctx.textAlign = 'left';
+  ctx.font = '13px Times New Roman';
+  let lx = W - pad - 330;
+  const ly = 62;
+  paintLegendBox(ctx, lx - 14, ly - 18, 340, 34);
+  items.forEach(([t, c]) => {
+    ctx.fillStyle = c;
+    ctx.fillRect(lx, ly - 8, 14, 14);
+    ctx.fillStyle = '#94A3B8';
+    ctx.fillText(t, lx + 20, ly + 4);
+    lx += 108;
+  });
+}
+
+/* ═══ CHART 3: PIE CHART ═══ */
+function drawPieChart() {
+  if (!analysisData) return;
+  const { ctx, W, H } = prepCanvas('pieCanvas');
+  paintBg(ctx, W, H);
+
+  const A = analysisData;
+  const histTotal = A.data.reduce((s, d) => s + d.rainfall, 0);
+  const projTotal = A.projections.reduce((s, p) => s + p.rainfall, 0);
+  const grand = (histTotal + projTotal) || 1;
+
+  const slices = [
+    { label: `Historical (${A.firstYear}–${A.lastYear})`, value: histTotal, years: A.data.length, color: '#38BDF8' },
+    { label: `Projected (${A.lastYear + 1}–${A.maxYear})`, value: projTotal, years: A.projections.length, color: '#A78BFA' }
+  ];
+
+  const cx = W * 0.35, cy = H / 2 + 10, radius = Math.min(W, H) * 0.32;
+
+  let startAngle = -Math.PI / 2;
+  slices.forEach(s => {
+    const angle = (s.value / grand) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, radius, startAngle, startAngle + angle);
+    ctx.closePath();
+    ctx.fillStyle = s.color;
+    ctx.fill();
+    ctx.strokeStyle = '#0A1628';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    const midAngle = startAngle + angle / 2;
+    ctx.fillStyle = '#0A1628';
+    ctx.font = 'bold 18px Times New Roman';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${((s.value / grand) * 100).toFixed(1)}%`,
+      cx + Math.cos(midAngle) * radius * 0.65,
+      cy + Math.sin(midAngle) * radius * 0.65);
+    startAngle += angle;
+  });
+
+  // Legend
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  const lx = W * 0.64;
+  const ly = H / 2 - 50;
+  slices.forEach((s, i) => {
+    const y = ly + i * 70;
+    ctx.fillStyle = s.color;
+    ctx.fillRect(lx, y, 24, 24);
+    ctx.fillStyle = '#E2E8F0';
+    ctx.font = 'bold 15px Times New Roman';
+    ctx.fillText(s.label, lx + 35, y + 16);
+    ctx.fillStyle = '#94A3B8';
+    ctx.font = '13px Times New Roman';
+    ctx.fillText(`${s.value.toFixed(0)} mm total over ${s.years} years (avg ${(s.value / s.years).toFixed(0)} mm/yr)`, lx + 35, y + 36);
+  });
+
+  ctx.fillStyle = '#64748B';
+  ctx.font = 'italic 12px Times New Roman';
+  ctx.fillText('Shares reflect total volume; the two periods have different lengths.', lx, ly + 150);
+
+  paintTitle(ctx, W, 'Total Rainfall Distribution — Historical vs Projected');
+}
+
+/* ═══ CHART 4: CUMULATIVE AREA CHART ═══ */
+function drawCumulativeChart() {
+  if (!analysisData) return;
+  const { ctx, W, H } = prepCanvas('cumulativeCanvas');
+  const pad = 90;
+  paintBg(ctx, W, H);
+
+  const A = analysisData;
+  const allPoints = [];
+  let cum = 0;
+  A.data.forEach(d => { cum += d.rainfall; allPoints.push({ year: d.year, cum, projected: false }); });
+  A.projections.forEach(p => { cum += p.rainfall; allPoints.push({ year: p.year, cum, projected: true }); });
+
+  const minYear = allPoints[0].year;
+  const maxYear = allPoints[allPoints.length - 1].year;
+  const maxCum = allPoints[allPoints.length - 1].cum || 1;
+  const yearRange = (maxYear - minYear) || 1;
+  const baseY = H - pad - 30;
+
+  const sx = (y) => pad + ((y - minYear) / yearRange) * (W - 2 * pad);
+  const sy = (v) => baseY - (v / maxCum) * (H - 2 * pad - 40);
+
+  paintAxes(ctx, W, H, pad);
+  paintAxisLabels(ctx, W, H, pad, 'Year', 'Cumulative Rainfall (mm)');
+  paintYTicks(ctx, pad, 0, maxCum, sy, 5);
+  paintXTicks(ctx, H, pad, minYear, maxYear, sx);
+
+  // Historical area
+  const histData = allPoints.filter(p => !p.projected);
+  ctx.fillStyle = 'rgba(56, 189, 248, 0.2)';
+  ctx.beginPath();
+  ctx.moveTo(sx(histData[0].year), baseY);
+  histData.forEach(p => ctx.lineTo(sx(p.year), sy(p.cum)));
+  ctx.lineTo(sx(histData[histData.length - 1].year), baseY);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = '#38BDF8';
+  ctx.lineWidth = 3;
+  ctx.shadowColor = '#38BDF8';
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  histData.forEach((p, i) => {
+    if (i === 0) ctx.moveTo(sx(p.year), sy(p.cum));
+    else ctx.lineTo(sx(p.year), sy(p.cum));
+  });
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Projected area
+  const projData = allPoints.filter(p => p.projected);
+  if (projData.length > 0) {
+    const lastHist = histData[histData.length - 1];
+
+    ctx.fillStyle = 'rgba(167, 139, 250, 0.2)';
+    ctx.beginPath();
+    ctx.moveTo(sx(lastHist.year), sy(lastHist.cum));
+    projData.forEach(p => ctx.lineTo(sx(p.year), sy(p.cum)));
+    ctx.lineTo(sx(projData[projData.length - 1].year), baseY);
+    ctx.lineTo(sx(lastHist.year), baseY);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = '#A78BFA';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([8, 5]);
+    ctx.shadowColor = '#A78BFA';
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.moveTo(sx(lastHist.year), sy(lastHist.cum));
+    projData.forEach(p => ctx.lineTo(sx(p.year), sy(p.cum)));
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.shadowBlur = 0;
+
+    // "Now" marker
+    const nowX = sx(lastHist.year);
+    ctx.strokeStyle = 'rgba(245, 158, 11, 0.6)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(nowX, 62); ctx.lineTo(nowX, baseY); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#F59E0B';
+    ctx.font = 'bold 12px Times New Roman';
+    ctx.textAlign = 'center';
+    ctx.fillText('Now', nowX, 56);
+  }
+
+  paintTitle(ctx, W, 'Cumulative Rainfall Over Time');
+
+  // Legend (top-left: the curve is always rising, so this corner is empty)
+  const bx = pad + 15, by = 62;
+  paintLegendBox(ctx, bx, by, 160, 62);
+  ctx.textAlign = 'left';
+  ctx.font = '13px Times New Roman';
+  ctx.fillStyle = 'rgba(56, 189, 248, 0.6)';
+  ctx.fillRect(bx + 12, by + 14, 20, 12);
+  ctx.fillStyle = '#94A3B8';
+  ctx.fillText('Historical', bx + 40, by + 24);
+  ctx.fillStyle = 'rgba(167, 139, 250, 0.6)';
+  ctx.fillRect(bx + 12, by + 38, 20, 12);
+  ctx.fillStyle = '#94A3B8';
+  ctx.fillText('Projected', bx + 40, by + 48);
+}
+
+/* ═══ CHART 5: YEARLY WITH CONFIDENCE BANDS ═══ */
+function drawYearlyChart() {
+  if (!analysisData) return;
+  const { ctx, W, H } = prepCanvas('yearlyCanvas');
+  const pad = 90;
+  paintBg(ctx, W, H);
+
+  const A = analysisData;
+  const proj = A.projections;
+  if (proj.length === 0) return;
+
+  const minYear = proj[0].year;
+  const maxYear = proj[proj.length - 1].year;
+  const yearRange = (maxYear - minYear) || 1;
+
+  const allVals = proj.flatMap(p => [p.lower, p.upper, p.rainfall]).concat([A.historicalMean]);
+  const maxVal = Math.max(...allVals) * 1.1;
+  const minVal = Math.max(0, Math.min(...allVals) * 0.9);
+  const span = (maxVal - minVal) || 1;
+  const baseY = H - pad - 30;
+
+  const sx = (y) => pad + ((y - minYear) / yearRange) * (W - 2 * pad);
+  const sy = (v) => baseY - ((v - minVal) / span) * (H - 2 * pad - 40);
+
+  paintAxes(ctx, W, H, pad);
+  paintAxisLabels(ctx, W, H, pad, 'Projected Year', 'Projected Rainfall (mm)');
+  paintYTicks(ctx, pad, minVal, maxVal, sy, 6);
+  paintXTicks(ctx, H, pad, minYear, maxYear, sx);
+
+  // Prediction band
+  ctx.fillStyle = 'rgba(167, 139, 250, 0.2)';
+  ctx.beginPath();
+  proj.forEach((p, i) => {
+    if (i === 0) ctx.moveTo(sx(p.year), sy(p.upper));
+    else ctx.lineTo(sx(p.year), sy(p.upper));
+  });
+  for (let i = proj.length - 1; i >= 0; i--) ctx.lineTo(sx(proj[i].year), sy(proj[i].lower));
+  ctx.closePath();
+  ctx.fill();
+
+  // Historical mean reference line
+  ctx.strokeStyle = 'rgba(245, 158, 11, 0.7)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 5]);
+  ctx.beginPath();
+  ctx.moveTo(pad, sy(A.historicalMean));
+  ctx.lineTo(W - pad / 2, sy(A.historicalMean));
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Central projection line
+  ctx.strokeStyle = '#A78BFA';
+  ctx.lineWidth = 3;
+  ctx.shadowColor = '#A78BFA';
+  ctx.shadowBlur = 15;
+  ctx.beginPath();
+  proj.forEach((p, i) => {
+    if (i === 0) ctx.moveTo(sx(p.year), sy(p.rainfall));
+    else ctx.lineTo(sx(p.year), sy(p.rainfall));
+  });
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  proj.forEach(p => {
+    ctx.beginPath();
+    ctx.arc(sx(p.year), sy(p.rainfall), 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#A78BFA';
+    ctx.fill();
+    ctx.strokeStyle = '#0A1628';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+
+  const confPct = (A.confidence * 100).toFixed(0);
+  paintTitle(ctx, W, `Year-by-Year Projection with ${confPct}% Prediction Band`);
+
+  // Legend
+  const bx = pad + 15, by = 62;
+  paintLegendBox(ctx, bx, by, 250, 90);
+  const lx = bx + 18, ly = by + 22;
+  ctx.textAlign = 'left';
+  ctx.font = '13px Times New Roman';
+
+  ctx.strokeStyle = '#A78BFA';
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(lx - 8, ly); ctx.lineTo(lx + 12, ly); ctx.stroke();
+  ctx.fillStyle = '#94A3B8';
+  ctx.fillText('Central projection', lx + 20, ly + 4);
+
+  ctx.fillStyle = 'rgba(167, 139, 250, 0.4)';
+  ctx.fillRect(lx - 8, ly + 18, 20, 12);
+  ctx.fillStyle = '#94A3B8';
+  ctx.fillText(`${confPct}% prediction interval`, lx + 20, ly + 28);
+
+  ctx.strokeStyle = 'rgba(245, 158, 11, 0.8)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 5]);
+  ctx.beginPath(); ctx.moveTo(lx - 8, ly + 48); ctx.lineTo(lx + 12, ly + 48); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#94A3B8';
+  ctx.fillText(`Historical mean (${A.historicalMean.toFixed(0)} mm)`, lx + 20, ly + 52);
+}
+
+/* ═══ EXPORT ENGINE (no external libraries): ZIP + XLSX writer with embedded chart images ═══ */
+const _crcTable = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(buf) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < buf.length; i++) c = _crcTable[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+/* files: [{name, data:Uint8Array}] → Uint8Array (ZIP, stored/uncompressed) */
+function makeZip(files) {
+  const enc = new TextEncoder();
+  const parts = [], central = [];
+  let offset = 0;
+  files.forEach(f => {
+    const name = enc.encode(f.name);
+    const crc = crc32(f.data), size = f.data.length;
+
+    const lh = new Uint8Array(30 + name.length);
+    const dv = new DataView(lh.buffer);
+    dv.setUint32(0, 0x04034b50, true);
+    dv.setUint16(4, 20, true);
+    dv.setUint16(6, 0x0800, true);      // UTF-8 names
+    dv.setUint16(8, 0, true);           // method: stored
+    dv.setUint16(10, 0, true);          // time
+    dv.setUint16(12, 0x21, true);       // date 1980-01-01
+    dv.setUint32(14, crc, true);
+    dv.setUint32(18, size, true);
+    dv.setUint32(22, size, true);
+    dv.setUint16(26, name.length, true);
+    dv.setUint16(28, 0, true);
+    lh.set(name, 30);
+    parts.push(lh, f.data);
+
+    const ch = new Uint8Array(46 + name.length);
+    const cv = new DataView(ch.buffer);
+    cv.setUint32(0, 0x02014b50, true);
+    cv.setUint16(4, 20, true);
+    cv.setUint16(6, 20, true);
+    cv.setUint16(8, 0x0800, true);
+    cv.setUint16(10, 0, true);
+    cv.setUint16(12, 0, true);
+    cv.setUint16(14, 0x21, true);
+    cv.setUint32(16, crc, true);
+    cv.setUint32(20, size, true);
+    cv.setUint32(24, size, true);
+    cv.setUint16(28, name.length, true);
+    cv.setUint32(42, offset, true);
+    ch.set(name, 46);
+    central.push(ch);
+    offset += lh.length + size;
+  });
+  const cdSize = central.reduce((s, c) => s + c.length, 0);
+  const end = new Uint8Array(22);
+  const ev = new DataView(end.buffer);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(8, files.length, true);
+  ev.setUint16(10, files.length, true);
+  ev.setUint32(12, cdSize, true);
+  ev.setUint32(16, offset, true);
+
+  const all = [...parts, ...central, end];
+  const total = all.reduce((s, p) => s + p.length, 0);
+  const out = new Uint8Array(total);
+  let pos = 0;
+  all.forEach(p => { out.set(p, pos); pos += p.length; });
+  return out;
+}
+
+function colName(i) {
+  let s = '';
+  i++;
+  while (i > 0) {
+    const m = (i - 1) % 26;
+    s = String.fromCharCode(65 + m) + s;
+    i = Math.floor((i - 1) / 26);
+  }
+  return s;
+}
+function xmlEsc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/* cell = primitive, or {v, s} where s: 1 = header, 2 = number 0.00, 3 = title */
+const XL = { HEAD: 1, NUM: 2, TITLE: 3 };
+function xlNum(v) { return { v, s: XL.NUM }; }
+function xlHead(v) { return { v, s: XL.HEAD }; }
+function xlTitle(v) { return { v, s: XL.TITLE }; }
+
+function sheetXml(sheet) {
+  let x = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+    '<sheetFormatPr defaultRowHeight="15"/>';
+  if (sheet.cols) {
+    x += '<cols>' + sheet.cols.map((w, i) =>
+      `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('') + '</cols>';
+  }
+  x += '<sheetData>';
+  sheet.rows.forEach((row, r) => {
+    if (!row || !row.length) return;
+    let cells = '';
+    row.forEach((cell, c) => {
+      if (cell === null || cell === undefined || cell === '') return;
+      const ref = colName(c) + (r + 1);
+      let v = cell, s = 0;
+      if (typeof cell === 'object') { v = cell.v; s = cell.s || 0; }
+      const sAttr = s ? ` s="${s}"` : '';
+      if (typeof v === 'number') {
+        if (!isFinite(v)) return;
+        cells += `<c r="${ref}"${sAttr}><v>${v}</v></c>`;
+      } else {
+        cells += `<c r="${ref}"${sAttr} t="inlineStr"><is><t xml:space="preserve">${xmlEsc(v)}</t></is></c>`;
+      }
+    });
+    if (cells) x += `<row r="${r + 1}">${cells}</row>`;
+  });
+  x += '</sheetData>';
+  if (sheet.images && sheet.images.length) x += '<drawing r:id="rId1"/>';
+  x += '</worksheet>';
+  return x;
+}
+
+const STYLES_XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+  '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+  '<fonts count="3">' +
+  '<font><sz val="11"/><name val="Calibri"/></font>' +
+  '<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>' +
+  '<font><b/><sz val="14"/><name val="Calibri"/></font>' +
+  '</fonts>' +
+  '<fills count="3">' +
+  '<fill><patternFill patternType="none"/></fill>' +
+  '<fill><patternFill patternType="gray125"/></fill>' +
+  '<fill><patternFill patternType="solid"><fgColor rgb="FF0EA5E9"/><bgColor indexed="64"/></patternFill></fill>' +
+  '</fills>' +
+  '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
+  '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+  '<cellXfs count="4">' +
+  '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+  '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>' +
+  '<xf numFmtId="2" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
+  '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
+  '</cellXfs>' +
+  '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
+  '</styleSheet>';
+
+/* sheets: [{name, rows, cols?, images?: [{bytes, row (0-based), dispW, dispH}]}] → Uint8Array (.xlsx) */
+function buildXlsx(sheets) {
+  const enc = new TextEncoder();
+  const files = [];
+  const add = (name, data) => files.push({ name, data: typeof data === 'string' ? enc.encode(data) : data });
+  const HDR = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+
+  let ct = HDR + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+    '<Default Extension="xml" ContentType="application/xml"/>' +
+    '<Default Extension="png" ContentType="image/png"/>' +
+    '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+    '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>';
+  let wbSheets = '', wbRels = '', mediaN = 0, drawN = 0;
+
+  sheets.forEach((sh, i) => {
+    const n = i + 1;
+    ct += `<Override PartName="/xl/worksheets/sheet${n}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`;
+    wbSheets += `<sheet name="${xmlEsc(sh.name)}" sheetId="${n}" r:id="rId${n}"/>`;
+    wbRels += `<Relationship Id="rId${n}" Type="${REL}/worksheet" Target="worksheets/sheet${n}.xml"/>`;
+
+    if (sh.images && sh.images.length) {
+      drawN++;
+      let drawing = HDR + '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" ' +
+        'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ' +
+        `xmlns:r="${REL}">`;
+      let drawRels = HDR + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
+      sh.images.forEach((img, k) => {
+        mediaN++;
+        add(`xl/media/image${mediaN}.png`, img.bytes);
+        const cx = Math.round(img.dispW * 9525), cy = Math.round(img.dispH * 9525);
+        drawRels += `<Relationship Id="rId${k + 1}" Type="${REL}/image" Target="../media/image${mediaN}.png"/>`;
+        drawing += '<xdr:oneCellAnchor>' +
+          `<xdr:from><xdr:col>0</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${img.row}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>` +
+          `<xdr:ext cx="${cx}" cy="${cy}"/>` +
+          '<xdr:pic>' +
+          `<xdr:nvPicPr><xdr:cNvPr id="${k + 2}" name="Graph ${k + 1}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>` +
+          `<xdr:blipFill><a:blip r:embed="rId${k + 1}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>` +
+          `<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr>` +
+          '</xdr:pic><xdr:clientData/></xdr:oneCellAnchor>';
+      });
+      drawing += '</xdr:wsDr>';
+      drawRels += '</Relationships>';
+      add(`xl/drawings/drawing${drawN}.xml`, drawing);
+      add(`xl/drawings/_rels/drawing${drawN}.xml.rels`, drawRels);
+      add(`xl/worksheets/_rels/sheet${n}.xml.rels`,
+        HDR + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        `<Relationship Id="rId1" Type="${REL}/drawing" Target="../drawings/drawing${drawN}.xml"/></Relationships>`);
+      ct += `<Override PartName="/xl/drawings/drawing${drawN}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>`;
+    }
+    add(`xl/worksheets/sheet${n}.xml`, sheetXml(sh));
+  });
+
+  wbRels += `<Relationship Id="rId${sheets.length + 1}" Type="${REL}/styles" Target="styles.xml"/>`;
+  ct += '</Types>';
+
+  files.unshift(
+    { name: '[Content_Types].xml', data: enc.encode(ct) },
+    { name: '_rels/.rels', data: enc.encode(HDR +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      `<Relationship Id="rId1" Type="${REL}/officeDocument" Target="xl/workbook.xml"/></Relationships>`) },
+    { name: 'xl/workbook.xml', data: enc.encode(HDR +
+      `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="${REL}">` +
+      `<sheets>${wbSheets}</sheets></workbook>`) },
+    { name: 'xl/_rels/workbook.xml.rels', data: enc.encode(HDR +
+      `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${wbRels}</Relationships>`) },
+    { name: 'xl/styles.xml', data: enc.encode(STYLES_XML) }
+  );
+  return makeZip(files);
+}
+
+/* ── browser helpers ── */
+function canvasToPng(canvas) {
+  // flatten onto an opaque dark background so the image looks right inside Excel
+  const t = document.createElement('canvas');
+  t.width = canvas.width; t.height = canvas.height;
+  const c = t.getContext('2d');
+  c.fillStyle = '#050A14';
+  c.fillRect(0, 0, t.width, t.height);
+  c.drawImage(canvas, 0, 0);
+  const bin = atob(t.toDataURL('image/png').split(',')[1]);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return { bytes, w: t.width, h: t.height };
+}
+function downloadBytes(bytes, filename, mime) {
+  const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+/* places stacked images on a sheet; returns {rows, images} */
+function layoutGraphSheet(titleText, noteText, charts, dispW) {
+  const rows = [[xlTitle(titleText)], [noteText]];
+  const images = [];
+  let r = 3;                                   // 1-based row for the next chart title
+  charts.forEach(ch => {
+    const dispH = Math.round(dispW * ch.h / ch.w);
+    rows[r - 1] = [xlTitle(ch.title)];
+    images.push({ bytes: ch.bytes, row: r, dispW, dispH });   // 0-based row index r = row right below the title
+    r += 1 + Math.ceil(dispH / 20) + 2;
+  });
+  return { rows, images };
+}
+
+
+/* ═══ EXPORT: GRAPHS → EXCEL / PNG ZIP ═══ */
+const CHART_DEFS = [
+  { id: 'trendCanvas',      file: '1_historical_projected_trend',  title: 'Historical + Projected Trend' },
+  { id: 'decadeBarCanvas',  file: '2_decade_wise_bar_chart',       title: 'Decade-Wise Projection (Bar Chart)' },
+  { id: 'pieCanvas',        file: '3_historical_vs_projected_pie', title: 'Historical vs Projected Distribution (Pie Chart)' },
+  { id: 'cumulativeCanvas', file: '4_cumulative_rainfall_area',    title: 'Cumulative Rainfall (Area Chart)' },
+  { id: 'yearlyCanvas',     file: '5_yearly_projection_bands',     title: 'Yearly Projection with Confidence Bands' }
+];
+function collectCharts() {
+  drawTrendChart(); drawDecadeBar(); drawPieChart(); drawCumulativeChart(); drawYearlyChart();
+  return CHART_DEFS.map(d => Object.assign({}, d, canvasToPng(document.getElementById(d.id))));
+}
+
+function exportGraphsZip() {
+  if (!analysisData) { alert('Please run the projection first.'); return; }
+  const charts = collectCharts();
+  const files = charts.map(c => ({ name: c.file + '.png', data: c.bytes }));
+  downloadBytes(makeZip(files), `projection_graphs_${Date.now()}.zip`, 'application/zip');
+  alert('✅ Graphs saved (ZIP of PNG images)!');
+}
+
+function exportExcel() {
+  if (!analysisData) { alert('Please run the projection first.'); return; }
+  const A = analysisData, reg = A.reg;
+  const charts = collectCharts();
+  const g = layoutGraphSheet(
+    'Future Rainfall Projection — Graphs',
+    'Graphs are embedded as high-resolution images. The data behind them is on the other sheets.',
+    charts, 900);
+
+  const kindName = { hist: 'Historical', mixed: 'Mixed (part projected)', proj: 'Projected' };
+  const summary = [
+    [xlTitle('Future Rainfall Projection — Summary')],
+    [],
+    [xlHead('Parameter'), xlHead('Value')],
+    ['Generated', new Date().toLocaleString()],
+    ['Historical period', `${A.firstYear} – ${A.lastYear}`],
+    ['Years of record', reg.n],
+    ['Projection horizon (years)', A.horizon],
+    ['Projection period', `${A.lastYear + 1} – ${A.maxYear}`],
+    ['Confidence level (%)', A.confidence * 100],
+    [],
+    ['Slope (mm/year)', xlNum(reg.slope)],
+    ['Slope standard error', xlNum(reg.seSlope)],
+    ['Slope p-value', xlNum(reg.pSlope)],
+    ['Intercept', xlNum(reg.intercept)],
+    ['R²', xlNum(reg.r2)],
+    ['Std error of estimate (mm)', xlNum(reg.stdError)],
+    ['Degrees of freedom', reg.df],
+    ['t-critical', xlNum(A.tCrit)],
+    [],
+    ['Historical mean (mm/year)', xlNum(A.historicalMean)],
+    ['Projected mean (mm/year)', xlNum(A.projectedMean)],
+    ['Change (mm)', xlNum(A.change)],
+    ['Change (%)', xlNum(A.changePct)]
+  ];
+  if (A.negativeFloor) summary.push([], ['Note', 'Negative projected values were floored at 0 mm.']);
+
+  const hist = [[xlHead('Year'), xlHead('Rainfall (mm)'), xlHead('Fitted trend (mm)'), xlHead('Residual (mm)')]];
+  A.data.forEach(d => {
+    const fit = reg.ym + reg.slope * (d.year - reg.xm);
+    hist.push([d.year, xlNum(d.rainfall), xlNum(fit), xlNum(d.rainfall - fit)]);
+  });
+
+  const proj = [[xlHead('Year'), xlHead('Projected (mm)'), xlHead('Lower bound (mm)'), xlHead('Upper bound (mm)'), xlHead('Margin (± mm)')]];
+  A.projections.forEach(p => proj.push([p.year, xlNum(p.rainfall), xlNum(p.lower), xlNum(p.upper), xlNum(p.margin)]));
+
+  const dec = [[xlHead('Decade'), xlHead('Years counted'), xlHead('Average (mm/year)'), xlHead('Type')]];
+  A.decades.forEach(d => dec.push([d.decade + 's', d.count, xlNum(d.avg), kindName[d.kind]]));
+
+  const bytes = buildXlsx([
+    { name: 'Graphs',     rows: g.rows, images: g.images, cols: [60] },
+    { name: 'Summary',    rows: summary, cols: [32, 28] },
+    { name: 'Historical', rows: hist, cols: [10, 16, 18, 16] },
+    { name: 'Projection', rows: proj, cols: [10, 16, 18, 18, 16] },
+    { name: 'Decades',    rows: dec,  cols: [12, 15, 18, 24] }
+  ]);
+  downloadBytes(bytes, `rainfall_projection_${Date.now()}.xlsx`,
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  alert('✅ Excel file saved (graphs + data)!');
+}
+
+/* ═══ SAVE ═══ */
+function saveResults() {
+  if (!analysisData) return;
+  const A = analysisData;
+  let out = '═══════════════════════════════════════════\n';
+  out += '  FUTURE RAINFALL PROJECTION REPORT\n';
+  out += '  Linear Trend Extrapolation\n';
+  out += '═══════════════════════════════════════════\n\n';
+  out += `Generated: ${new Date().toLocaleString()}\n`;
+  out += `Historical Period: ${A.firstYear} — ${A.lastYear} (${A.data.length} years)\n`;
+  out += `Projection Horizon: ${A.horizon} years (${A.lastYear + 1} — ${A.maxYear})\n`;
+  out += `Confidence Level: ${(A.confidence * 100).toFixed(0)}%\n\n`;
+  out += '───────────────────────────────────────────\n';
+  out += '  TREND ANALYSIS\n';
+  out += '───────────────────────────────────────────\n';
+  out += `Slope: ${A.reg.slope.toFixed(4)} mm/year (SE ${A.reg.seSlope.toFixed(4)})\n`;
+  out += `Slope p-value: ${fmtP(A.reg.pSlope)}\n`;
+  out += `Intercept: ${A.reg.intercept.toFixed(2)}\n`;
+  out += `R²: ${A.reg.r2.toFixed(4)}\n`;
+  out += `Std Error (s): ${A.reg.stdError.toFixed(2)} mm\n`;
+  out += `t-critical: ${A.tCrit.toFixed(3)} (df = ${A.reg.df})\n`;
+  out += `Historical Mean: ${A.historicalMean.toFixed(1)} mm\n`;
+  out += `Projected Mean: ${A.projectedMean.toFixed(1)} mm\n`;
+  out += `Change: ${A.change.toFixed(1)} mm (${A.changePct.toFixed(1)}%)\n`;
+  if (A.negativeFloor) out += 'Note: negative projected values were floored at 0 mm.\n';
+  out += '\n───────────────────────────────────────────\n';
+  out += '  PROJECTED VALUES\n';
+  out += '───────────────────────────────────────────\n';
+  out += 'Year | Projected | Lower | Upper | Margin\n';
+  A.projections.forEach(p => {
+    out += `${p.year} | ${p.rainfall.toFixed(1)} | ${p.lower.toFixed(1)} | ${p.upper.toFixed(1)} | ±${p.margin.toFixed(1)}\n`;
+  });
+  out += '\n───────────────────────────────────────────\n';
+  out += 'Developed by Junaid Ali · Civil Engineering Research\n';
+  out += '═══════════════════════════════════════════\n';
+
+  const blob = new Blob([out], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `projection_report_${Date.now()}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+  alert('✅ Report saved!');
+}
+
+function saveCSV() {
+  if (!analysisData) return;
+  let out = 'year,projected_rainfall,lower_bound,upper_bound,margin\n';
+  analysisData.projections.forEach(p => {
+    out += `${p.year},${p.rainfall.toFixed(2)},${p.lower.toFixed(2)},${p.upper.toFixed(2)},${p.margin.toFixed(2)}\n`;
+  });
+
+  const blob = new Blob([out], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `projection_data_${Date.now()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  alert('✅ CSV saved!');
+}
+</script>
+
+</body>
+</html>

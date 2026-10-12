@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Missing Data Recovery — Precipitation Analyzer</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Times New Roman',Times,serif}
+@media (hover:hover) and (pointer:fine){*{cursor:none}}
+body{background:#0A1628;min-height:100vh;overflow-x:hidden;color:#E2E8F0}
+option{background:#0A1628;color:#E2E8F0}
+.cursor-dot{position:fixed;width:8px;height:8px;background:#38BDF8;border-radius:50%;pointer-events:none;z-index:9999;box-shadow:0 0 20px #38BDF8,0 0 40px #38BDF8;transform:translate(-50%,-50%)}
+.cursor-ring{position:fixed;width:40px;height:40px;border:2px solid rgba(56,189,248,.5);border-radius:50%;pointer-events:none;z-index:9998;transform:translate(-50%,-50%);transition:width .3s,height .3s,background .3s,border-color .3s}
+.cursor-ring.hover{width:70px;height:70px;border-color:rgba(34,211,238,.9);background:rgba(34,211,238,.12)}
+.cursor-ring.click{width:100px;height:100px;border-color:#22D3EE;background:rgba(34,211,238,.2)}
+canvas.fx{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none}
+#rainCanvas{z-index:1}#waveCanvas{z-index:2}#trailCanvas{z-index:50}
+.bg{position:fixed;inset:0;pointer-events:none;z-index:1;background:radial-gradient(circle at 20% 30%,rgba(56,189,248,.08),transparent 50%),radial-gradient(circle at 80% 70%,rgba(14,165,233,.06),transparent 50%)}
+.grid-overlay{position:fixed;inset:0;pointer-events:none;z-index:1;background-image:linear-gradient(rgba(56,189,248,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(56,189,248,.03) 1px,transparent 1px);background-size:80px 80px}
+.page{position:fixed;inset:0;overflow-y:auto;z-index:10;opacity:0;visibility:hidden;transform:translateX(100%) scale(.95);transition:all .7s cubic-bezier(.23,1,.32,1);padding:30px 20px}
+.page.active{opacity:1;visibility:visible;transform:none}
+.page.exit-left{transform:translateX(-100%) scale(.95);opacity:0}
+.container{max-width:1300px;margin:0 auto}
+.page-header{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:30px;padding:20px 25px;background:rgba(15,23,42,.7);backdrop-filter:blur(20px);border-radius:18px;border:1px solid rgba(56,189,248,.15)}
+.page-header h2{font-size:1.4rem;color:#38BDF8;letter-spacing:1px}
+.back-btn{padding:10px 22px;border:1px solid rgba(56,189,248,.3);border-radius:10px;background:rgba(56,189,248,.08);color:#38BDF8;font-size:.9rem;font-weight:600;transition:all .3s}
+.back-btn:hover{background:rgba(56,189,248,.2);transform:translateY(-3px)}
+.hero{text-align:center;padding:50px 20px 30px}
+.badge{display:inline-block;padding:8px 22px;border-radius:30px;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.3);font-size:.75rem;letter-spacing:4px;text-transform:uppercase;color:#38BDF8;margin-bottom:24px;animation:fl 3s ease-in-out infinite}
+@keyframes fl{50%{transform:translateY(-6px)}}
+.hero h1{font-size:3.5rem;font-weight:900;background:linear-gradient(90deg,#38BDF8,#0EA5E9,#22D3EE,#38BDF8);background-size:300% auto;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:sh 5s linear infinite;margin-bottom:12px;line-height:1.1}
+@keyframes sh{to{background-position:300% center}}
+.author{font-size:1.15rem;color:#38BDF8;font-weight:700;letter-spacing:3px;margin-bottom:16px;animation:ng 3s ease-in-out infinite}
+@keyframes ng{0%,100%{text-shadow:0 0 15px rgba(56,189,248,.5)}50%{text-shadow:0 0 35px rgba(56,189,248,.9)}}
+.subtitle{color:#94A3B8;letter-spacing:2px;margin-bottom:12px;font-style:italic}
+.desc{color:#7C8CA3;max-width:720px;margin:0 auto;line-height:1.7}
+.section-title{font-size:1.4rem;margin:40px 0 20px;padding-bottom:12px;border-bottom:1px solid rgba(56,189,248,.15);display:flex;align-items:center}
+.section-title::before{content:'';width:5px;height:24px;background:linear-gradient(180deg,#38BDF8,#22D3EE);margin-right:14px;border-radius:3px}
+.features-grid,.summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px;margin-bottom:30px}
+.feature-card,.summary-card,.input-panel{background:rgba(15,23,42,.7);backdrop-filter:blur(20px);border-radius:14px;padding:24px;border:1px solid rgba(56,189,248,.15);transition:all .4s}
+.feature-card:hover,.summary-card:hover{transform:translateY(-6px);box-shadow:0 20px 40px rgba(0,0,0,.4),0 0 30px rgba(56,189,248,.15);border-color:rgba(56,189,248,.4)}
+.feature-card h4{color:#38BDF8;margin-bottom:10px;font-size:1.05rem}
+.feature-card p{font-size:.92rem;color:#94A3B8;line-height:1.6}
+.input-panel{margin-bottom:24px}
+.input-panel h3{font-size:1rem;color:#38BDF8;margin-bottom:20px;letter-spacing:1.5px;text-transform:uppercase}
+.input-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:20px}
+label{display:block;font-size:.78rem;color:#94A3B8;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;font-weight:600}
+input,select,textarea{width:100%;padding:12px 16px;border-radius:10px;border:1px solid rgba(56,189,248,.2);background:rgba(0,0,0,.4);color:#E2E8F0;font-size:.95rem;outline:none;transition:all .3s}
+input:focus,select:focus,textarea:focus{border-color:#38BDF8;box-shadow:0 0 20px rgba(56,189,248,.3)}
+textarea{min-height:180px;resize:vertical;font-family:'Courier New',monospace;line-height:1.7}
+.upload-box{border:2px dashed rgba(56,189,248,.4);border-radius:14px;padding:36px 20px;text-align:center;background:rgba(56,189,248,.03);transition:all .3s}
+.upload-box:hover{border-color:#38BDF8;background:rgba(56,189,248,.08)}
+.upload-box p{color:#94A3B8;margin-top:8px}
+.station-table{width:100%;border-collapse:collapse;background:rgba(0,0,0,.3);min-width:640px}
+.station-table th{background:rgba(56,189,248,.15);color:#38BDF8;padding:12px;text-align:left;font-size:.82rem;text-transform:uppercase;letter-spacing:1px}
+.station-table td{padding:10px 12px;border-bottom:1px solid rgba(56,189,248,.08);font-size:.92rem}
+.summary-card{text-align:center;padding:20px}
+.summary-label{font-size:.72rem;color:#94A3B8;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
+.summary-value{font-size:1.6rem;font-weight:800;color:#38BDF8;font-family:'Courier New',monospace}
+.summary-value.good{color:#10B981}.summary-value.bad{color:#F59E0B}
+.summary-unit{font-size:.75rem;color:#7C8CA3;margin-top:4px}
+.canvas-wrapper{background:rgba(5,10,20,.8);border-radius:16px;padding:16px;border:1px solid rgba(56,189,248,.2);margin-bottom:24px}
+canvas.chart-canvas{width:100%;height:auto;border-radius:10px;display:block}
+.formula-box{background:rgba(34,211,238,.05);border-left:4px solid #22D3EE;border-radius:10px;padding:20px;margin-bottom:24px;font-family:'Courier New',monospace;color:#38BDF8;line-height:1.8}
+.formula-label{font-family:'Times New Roman',serif;color:#94A3B8;font-size:.85rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+.info-box{background:rgba(34,211,238,.08);border-left:4px solid #22D3EE;border-radius:10px;padding:16px 20px;margin-bottom:20px;color:#CBD5E1;line-height:1.7}
+.info-box strong{color:#38BDF8}
+.info-box.warning{background:rgba(245,158,11,.08);border-left-color:#F59E0B}.info-box.warning strong{color:#F59E0B}
+.info-box.success{background:rgba(16,185,129,.08);border-left-color:#10B981}.info-box.success strong{color:#10B981}
+.liquid-btn{position:relative;display:inline-block;margin:5px;padding:14px 36px;border:none;border-radius:50px;background:linear-gradient(135deg,#38BDF8,#0EA5E9,#22D3EE);background-size:300% 300%;color:#0A1628;font-size:.9rem;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;transition:all .4s cubic-bezier(.23,1,.32,1);box-shadow:0 10px 30px rgba(56,189,248,.3),inset 0 2px 8px rgba(255,255,255,.3);animation:lf 4s ease infinite}
+@keyframes lf{50%{background-position:100% 50%}}
+.liquid-btn:hover{transform:translateY(-5px) scale(1.05);box-shadow:0 20px 50px rgba(56,189,248,.5)}
+.liquid-btn.red{background:linear-gradient(135deg,#EF4444,#DC2626);color:#fff}
+.dlbtn{margin-left:auto;padding:6px 16px;font-size:.8rem}.small{padding:10px 24px;font-size:.82rem}
+.footer{text-align:center;padding:40px 20px 30px;color:#64748B;letter-spacing:1px;font-style:italic;border-top:1px solid rgba(56,189,248,.1);margin-top:50px}
+.footer span{color:#38BDF8;font-weight:600}
+#toast{position:fixed;left:50%;bottom:30px;transform:translate(-50%,100px);background:#0C4A7A;color:#fff;padding:12px 24px;border-radius:30px;z-index:10000;border:1px solid #38BDF8;transition:transform .4s}
+#toast.show{transform:translate(-50%,0)}
+::-webkit-scrollbar{width:8px}::-webkit-scrollbar-track{background:#0A1628}::-webkit-scrollbar-thumb{background:linear-gradient(180deg,#38BDF8,#22D3EE);border-radius:10px}
+@media (max-width:700px){.hero h1{font-size:2.2rem}}
+</style>
+</head>
+<body>
+<div class="cursor-dot" id="cursorDot"></div><div class="cursor-ring" id="cursorRing"></div>
+<canvas id="rainCanvas" class="fx"></canvas><canvas id="waveCanvas" class="fx"></canvas><canvas id="trailCanvas" class="fx"></canvas>
+<div class="bg"></div><div class="grid-overlay"></div><div id="toast"></div>
+
+<div class="page active" id="pageDashboard"><div class="container">
+  <div class="page-header"><h2>Missing Data Recovery</h2><button class="back-btn" onclick="location.href='index.html'">← Back</button></div>
+  <div class="hero">
+    <div class="badge">Module 4 — Normal Ratio Method</div>
+    <h1>Missing Data Recovery</h1>
+    <div class="author">by Junaid Ali</div>
+    <p class="subtitle">Estimate Missing Rainfall Using Nearby Stations</p>
+    <p class="desc">Fill gaps in a rainfall record with the Normal Ratio Method, then test how good the method is on your own data before trusting the filled values.</p>
+  </div>
+  <div class="section-title">What This Module Does</div>
+  <div class="features-grid">
+    <div class="feature-card"><h4>Gap Detection</h4><p>Empty cells, NaN, NA or negative codes in the target column are treated as missing.</p></div>
+    <div class="feature-card"><h4>Normal Ratio Method</h4><p>Px = (1/n) Σ (Nx/Ni) × Pi, with normals taken over the same years for both stations.</p></div>
+    <div class="feature-card"><h4>Station Selection</h4><p>Use the best correlated neighbours, column order, or pick stations yourself (1 to 5).</p></div>
+    <div class="feature-card"><h4>Validation</h4><p>Leave-one-out test on known years gives RMSE, MAE, bias and R² for the estimates.</p></div>
+  </div>
+  <div style="text-align:center;margin-top:30px"><button class="liquid-btn" onclick="goToPage('pageInput')">Start Analysis →</button></div>
+  <div class="footer">Developed by <span>Junaid Ali</span> · Civil Engineering Research</div>
+</div></div>
+
+<div class="page" id="pageInput"><div class="container">
+  <div class="page-header"><h2>Missing Data Recovery — Input</h2><button class="back-btn" onclick="goToPage('pageDashboard')">← Back</button></div>
+  <div class="info-box"><strong>Data needed:</strong> <strong>year, target, station1, station2, ...</strong> (annual mm). Leave the target blank (or NaN) where it is missing. Neighbour stations may also have gaps; each year uses whichever neighbours have data. At least 5 known target years are needed.</div>
+  <div class="input-panel"><h3>Option 1: Upload CSV</h3>
+    <div class="upload-box" onclick="$('csvFile').click()"><div style="font-size:2.5rem">📁</div><p>Click to upload CSV file</p><p style="font-size:.8rem">Empty cells are treated as missing. A header row is allowed.</p>
+    <input type="file" id="csvFile" accept=".csv,.txt" style="display:none" onchange="handleCsv(event)"></div>
+    <div id="csvStatus" style="display:none;margin-top:15px;padding:12px;background:rgba(34,211,238,.1);border-left:3px solid #22D3EE;border-radius:8px;color:#22D3EE">✅ CSV loaded: <span id="csvFileName"></span></div>
+  </div>
+  <div class="input-panel"><h3>Option 2: Manual Entry</h3>
+    <textarea id="manualData" placeholder="2000, 1250, 1180, 1220&#10;2001, , 1290, 1310&#10;2002, 1420, 1400, 1380&#10;2003, , 1520, 1480"></textarea>
+    <div style="margin-top:16px"><button class="liquid-btn small" onclick="demo()">Load Demo Data</button><button class="liquid-btn small red" onclick="$('manualData').value=''">Clear</button></div>
+  </div>
+  <div class="input-panel"><h3>Analysis Settings</h3>
+    <div class="input-row">
+      <div><label>Station Selection</label><select id="stationMethod" onchange="$('stationListWrap').style.display=this.value==='manual'?'block':'none'"><option value="corr">Best correlated with target</option><option value="order">Column order</option><option value="manual">Choose manually</option></select></div>
+      <div><label>Max Stations to Use (1 to 5)</label><input type="number" id="maxStations" value="3" min="1" max="5"></div>
+      <div id="stationListWrap" style="display:none"><label>Station numbers (e.g. 1, 3)</label><input id="stationList" placeholder="1, 3"></div>
+    </div>
+  </div>
+  <div style="text-align:center;margin-top:30px"><button class="liquid-btn" onclick="runAnalysis()">Run Analysis →</button></div>
+</div></div>
+
+<div class="page" id="pageResults"><div class="container">
+  <div class="page-header"><h2>Missing Data Recovery — Results</h2><button class="back-btn" onclick="goToPage('pageInput')">← Back</button></div>
+  <div id="verdict"></div><div class="summary-grid" id="summary"></div>
+  <div class="section-title">Data Availability (where the gaps are)<button class="back-btn dlbtn" onclick="dlChart('availCanvas','data_availability')">⬇ PNG</button></div>
+  <div class="canvas-wrapper"><canvas id="availCanvas" class="chart-canvas" width="1000" height="400"></canvas></div>
+  <div class="section-title">Observed vs Estimated<button class="back-btn dlbtn" onclick="dlChart('recoveryCanvas','observed_vs_estimated')">⬇ PNG</button></div>
+  <div class="canvas-wrapper"><canvas id="recoveryCanvas" class="chart-canvas" width="1000" height="620"></canvas></div>
+  <div class="section-title">Normal Ratio Method — Calculation</div><div class="formula-box" id="formulaBox"></div>
+  <div class="section-title">Target vs Neighbour Stations<button class="back-btn dlbtn" onclick="dlChart('scatterCanvas','target_vs_neighbours')">⬇ PNG</button></div>
+  <div class="canvas-wrapper"><canvas id="scatterCanvas" class="chart-canvas" width="1000" height="500"></canvas></div>
+  <div class="section-title">Validation (leave-one-out on known years)<button class="back-btn dlbtn" onclick="dlChart('valCanvas','validation_scatter')">⬇ PNG</button></div>
+  <div class="canvas-wrapper"><canvas id="valCanvas" class="chart-canvas" width="1000" height="620"></canvas></div>
+  <div class="section-title">Validation Errors by Year<button class="back-btn dlbtn" onclick="dlChart('resCanvas','validation_errors')">⬇ PNG</button></div>
+  <div class="canvas-wrapper"><canvas id="resCanvas" class="chart-canvas" width="1000" height="520"></canvas></div>
+  <div class="section-title">Reconstructed Data Table</div>
+  <div class="input-panel" style="overflow-x:auto;padding:12px"><table class="station-table" id="dataTable"><thead></thead><tbody></tbody></table></div>
+  <div style="text-align:center;margin-top:30px"><button class="liquid-btn" onclick="saveChartsZip()">All Charts (PNG ZIP)</button><button class="liquid-btn" onclick="saveReport()">Save Report (TXT)</button><button class="liquid-btn" onclick="saveCSV()">Save Recovered Data (CSV)</button><button class="liquid-btn" onclick="goToPage('pageDashboard')">Dashboard</button></div>
+  <div class="footer">Developed by <span>Junaid Ali</span> · Civil Engineering Research</div>
+</div></div>
+
+<script>
+const $=id=>document.getElementById(id);
+function msg(t){const e=$('toast');e.textContent=t;e.classList.add('show');clearTimeout(msg.t);msg.t=setTimeout(()=>e.classList.remove('show'),5000)}
+
+/* ===== Effects: cursor, water drops, rain, waves (one loop) ===== */
+const dot=$('cursorDot'),ring=$('cursorRing'),T=$('trailCanvas'),R=$('rainCanvas'),V=$('waveCanvas');
+const tc=T.getContext('2d'),rc=R.getContext('2d'),wc=V.getContext('2d');
+let parts=[],off=0;const drops=[];
+if(!matchMedia('(pointer:fine)').matches){dot.style.display=ring.style.display='none'}
+function rs(){for(const c of[T,R,V]){c.width=innerWidth;c.height=innerHeight}}
+rs();addEventListener('resize',rs);
+for(let i=0;i<120;i++)drops.push({x:Math.random()*innerWidth,y:Math.random()*innerHeight,l:10+Math.random()*20,s:2+Math.random()*3,o:.15+Math.random()*.3,w:.5+Math.random()*1.5});
+function burst(x,y,n,sp,sz){for(let i=0;i<n;i++)parts.push({x,y,vx:(Math.random()-.5)*sp,vy:(Math.random()-.5)*sp,life:1,size:Math.random()*sz+2,c:Math.random()>.5?'56,189,248':'34,211,238'})}
+addEventListener('pointermove',e=>{dot.style.left=ring.style.left=e.clientX+'px';dot.style.top=ring.style.top=e.clientY+'px';burst(e.clientX,e.clientY,2,3,4)});
+addEventListener('pointerdown',e=>{ring.classList.add('click');burst(e.clientX,e.clientY,40,12,7)});
+addEventListener('pointerup',()=>ring.classList.remove('click'));
+const HOV='button,input,select,textarea,.upload-box,.feature-card';
+document.addEventListener('pointerover',e=>{if(e.target.closest(HOV))ring.classList.add('hover')});
+document.addEventListener('pointerout',e=>{if(e.target.closest(HOV))ring.classList.remove('hover')});
+function wave(y,a,l,col,sp,op){wc.beginPath();wc.moveTo(0,V.height);for(let x=0;x<=V.width;x+=5)wc.lineTo(x,y+Math.sin((x+off*sp)/l)*a);wc.lineTo(V.width,V.height);wc.fillStyle=col;wc.globalAlpha=op;wc.fill();wc.globalAlpha=1}
+function loop(){
+  tc.clearRect(0,0,T.width,T.height);parts=parts.filter(p=>p.life>0&&p.size>.3);
+  for(const p of parts){p.x+=p.vx;p.y+=p.vy;p.vy+=.12;p.life-=.02;p.size*=.975;tc.beginPath();tc.arc(p.x,p.y,p.size,0,6.283);tc.fillStyle=`rgba(${p.c},${p.life*.8})`;tc.shadowColor=`rgba(${p.c},${p.life})`;tc.shadowBlur=12;tc.fill()}
+  tc.shadowBlur=0;rc.clearRect(0,0,R.width,R.height);rc.lineCap='round';
+  for(const d of drops){d.y+=d.s;if(d.y>R.height+20){d.y=-30;d.x=Math.random()*R.width}rc.strokeStyle=`rgba(56,189,248,${d.o})`;rc.lineWidth=d.w;rc.beginPath();rc.moveTo(d.x,d.y);rc.lineTo(d.x-1,d.y+d.l);rc.stroke()}
+  wc.clearRect(0,0,V.width,V.height);
+  wave(V.height-60,25,200,'#0EA5E9',1,.15);wave(V.height-40,30,250,'#38BDF8',.8,.12);wave(V.height-20,20,180,'#22D3EE',1.2,.1);
+  off++;requestAnimationFrame(loop)}
+loop();
+
+/* ===== Navigation ===== */
+let cur='pageDashboard',busy=false;
+function goToPage(id){if(id===cur||busy)return;busy=true;const c=$(cur),n=$(id);c.classList.remove('active');c.classList.add('exit-left');
+  setTimeout(()=>{c.classList.remove('exit-left');n.classList.add('active');n.scrollTop=0;cur=id;busy=false},500)}
+
+/* ===== Input ===== */
+const mean=a=>a.reduce((s,v)=>s+v,0)/a.length;
+const num=v=>{v=(v||'').trim();if(v===''||/^(nan|na|null|none|-+)$/i.test(v))return null;const x=parseFloat(v);return isNaN(x)||x<0?null:x};
+function corr(x,y){const mx=mean(x),my=mean(y);let sxy=0,sxx=0,syy=0;for(let i=0;i<x.length;i++){sxy+=(x[i]-mx)*(y[i]-my);sxx+=(x[i]-mx)**2;syy+=(y[i]-my)**2}return sxx&&syy?sxy/Math.sqrt(sxx*syy):0}
+function nice(r){const p=10**Math.floor(Math.log10(r)),f=r/p;return(f<1.5?1:f<3?2:f<7?5:10)*p}
+function handleCsv(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();
+  r.onload=ev=>{$('manualData').value=ev.target.result.trim();$('csvStatus').style.display='block';$('csvFileName').textContent=f.name;e.target.value=''};r.readAsText(f)}
+function demo(){let s=11;const r=()=>(s=(s*16807)%2147483647)/2147483647,k=[1,.92,1.08];let o='';
+  for(let i=0;i<20;i++){const c=900+250*Math.sin(i*.9)+200*(r()-.5),t=Math.round(c*(1+.06*(r()-.5))),n=k.map(q=>Math.round(c*q*(1+.06*(r()-.5))));
+    if(i===8)n[1]='';o+=`${2000+i}, ${[3,7,8,13,16].includes(i)?'':t}, ${n.join(', ')}\n`}
+  $('manualData').value='year, target, station1, station2, station3\n'+o.trim()}
+function parseData(){
+  const t=$('manualData').value.trim();if(!t){msg('Enter or upload data first.');return null}
+  const rows=[];let names=null;
+  for(const l of t.split(/\r?\n/)){const s=l.trim();if(!s)continue;const p=s.split(/[,;\t]/).map(x=>x.trim());
+    if(!/^\d{3,4}$/.test(p[0])){if(!names&&p.length>2)names=p.slice(2);continue}
+    if(p.length<3)continue;
+    rows.push({year:parseInt(p[0]),target:num(p[1]),nb:p.slice(2).map(num)})}
+  if(!rows.length){msg('No valid rows. Use: year, target, station1, station2, ...');return null}
+  if(new Set(rows.map(r=>r.year)).size!==rows.length){msg('Duplicate years found. Each year must appear once.');return null}
+  const K=Math.max(...rows.map(r=>r.nb.length));rows.forEach(r=>{while(r.nb.length<K)r.nb.push(null)});
+  rows.sort((a,b)=>a.year-b.year);
+  return{rows,K,nm:Array.from({length:K},(_,j)=>(names&&names[j])||('Station '+(j+1)))}}
+
+/* ===== Normal Ratio Method ===== */
+function pair(rows,j,ex){const a=[],b=[];rows.forEach((r,i)=>{if(i!==ex&&r.target!==null&&r.nb[j]!==null){a.push(r.target);b.push(r.nb[j])}});return{a,b}}
+function nrm(rows,i,rank,N,ex){let sum=0,n=0;const used=[];
+  for(const j of rank){if(n>=N)break;const v=rows[i].nb[j];if(v===null)continue;
+    const{a,b}=pair(rows,j,ex);if(a.length<3)continue;const Nx=mean(a),Ni=mean(b);if(!Ni)continue;
+    sum+=Nx/Ni*v;n++;used.push({j,v,Nx,Ni})}
+  return n?{est:sum/n,used}:null}
+
+let A=null;
+function runAnalysis(){
+  const P=parseData();if(!P)return;const{rows,K,nm}=P;
+  if(rows.length<5){msg('At least 5 years of data are needed.');return}
+  if(!K){msg('Add at least one neighbouring station column.');return}
+  const miss=rows.filter(r=>r.target===null).length;
+  if(!miss){msg('No missing values in the target column. Nothing to recover.');return}
+  if(rows.length-miss<5){msg('The target needs at least 5 known years to build its normal.');return}
+  const N=Math.min(5,Math.max(1,parseInt($('maxStations').value)||3));
+  const cand=[];for(let j=0;j<K;j++){const{a,b}=pair(rows,j,-1);if(a.length>=3)cand.push({j,r:corr(a,b),n:a.length})}
+  if(!cand.length){msg('No neighbour overlaps the target in at least 3 years.');return}
+  const m=$('stationMethod').value;let rk;
+  if(m==='corr')rk=cand.slice().sort((x,y)=>y.r-x.r);else if(m==='order')rk=cand;
+  else{const want=$('stationList').value.split(/[,\s;]+/).map(x=>parseInt(x)-1);rk=cand.filter(c=>want.includes(c.j));if(!rk.length){msg('None of the listed stations is usable.');return}}
+  const rank=rk.map(c=>c.j);
+  const est=rows.map((r,i)=>r.target===null?nrm(rows,i,rank,N,-1):null);
+  const fin=rows.map((r,i)=>r.target!==null?r.target:(est[i]?est[i].est:null));
+  const done=est.filter(Boolean).length,bad=rows.filter((r,i)=>r.target===null&&!est[i]).map(r=>r.year);
+  const errs=[];rows.forEach((r,i)=>{if(r.target===null)return;const e=nrm(rows,i,rank,N,i);if(e)errs.push({a:r.target,p:e.est,year:r.year})});
+  let V=null;
+  if(errs.length>=3){const sse=errs.reduce((s,e)=>s+(e.p-e.a)**2,0),ma=mean(errs.map(e=>e.a)),sst=errs.reduce((s,e)=>s+(e.a-ma)**2,0);
+    V={n:errs.length,rmse:Math.sqrt(sse/errs.length),mae:mean(errs.map(e=>Math.abs(e.p-e.a))),bias:errs.reduce((s,e)=>s+e.p-e.a,0)/errs.reduce((s,e)=>s+e.a,0)*100,r2:sst?1-sse/sst:0}}
+  A={rows,K,nm,rank,N,est,fin,done,miss,errs,V,cand};
+  const tn=mean(rows.filter(r=>r.target!==null).map(r=>r.target));
+  $('verdict').innerHTML=done===miss
+   ?`<div class="info-box success" style="font-size:1rem;padding:22px"><div style="font-size:1.5rem">✅</div>Estimated <strong>${done}</strong> of ${miss} missing values with the <strong>Normal Ratio Method</strong> (up to ${N} stations per year). Check the validation below to see how reliable this is for your data.</div>`
+   :`<div class="info-box warning" style="font-size:1rem;padding:22px"><div style="font-size:1.5rem">⚠️</div>Estimated <strong>${done}</strong> of ${miss} missing values. No usable neighbour data for year(s): <strong>${bad.join(', ')}</strong>.</div>`;
+  const cards=[['Missing Values',miss,'bad'],['Recovered',done,done===miss?'good':'bad'],['Target Normal (Nx)',tn.toFixed(1)+' mm',''],['Stations in Rank',rank.length,'']];
+  if(V)cards.push(['Validation RMSE',V.rmse.toFixed(1)+' mm',''],['Validation R²',V.r2.toFixed(3),V.r2>=.8?'good':'bad'],['Validation MAE',V.mae.toFixed(1)+' mm',''],['Validation Bias',V.bias.toFixed(2)+'%','']);
+  $('summary').innerHTML=cards.map(c=>`<div class="summary-card"><div class="summary-label">${c[0]}</div><div class="summary-value ${c[2]}">${c[1]}</div></div>`).join('');
+  const lines=rank.map((j,k)=>{const{a,b}=pair(rows,j,-1),c=cand.find(x=>x.j===j);return`${k+1}. ${nm[j]}: Ni = ${mean(b).toFixed(1)}, Nx = ${mean(a).toFixed(1)} (${a.length} common years), Nx/Ni = ${(mean(a)/mean(b)).toFixed(4)}, r = ${c.r.toFixed(3)}${k<N?'  [priority]':''}`}).join('<br>');
+  const top=rank.slice(0,N).map(j=>{const{a,b}=pair(rows,j,-1);return Math.abs(mean(b)-mean(a))/mean(a)});
+  const note=top.every(d=>d<.1)?'The selected normals are within 10% of the target normal, so a simple average of neighbouring values would give nearly the same result.':'At least one selected normal differs from the target normal by more than 10%, so normal-ratio weighting is appropriate.';
+  const ei=est.findIndex(Boolean);let ex='';
+  if(ei>=0){const u=est[ei].used;ex=`<br><br><div class="formula-label">Example (year ${rows[ei].year})</div>Px = (1/${u.length}) × [ ${u.map(q=>`(${q.Nx.toFixed(1)} / ${q.Ni.toFixed(1)}) × ${q.v}`).join(' + ')} ]<br>Px = <strong>${est[ei].est.toFixed(2)} mm</strong>`}
+  $('formulaBox').innerHTML=`<div class="formula-label">Formula</div>Px = (1/n) × Σ [ (Nx / Ni) × Pi ]<br>Nx, Ni = mean annual rainfall of target and neighbour i over the <strong>same years</strong> (years where both have data)<br>Pi = neighbour i rainfall in the missing year, n = stations used that year<br><br><div class="formula-label">Stations (ranked)</div>${lines}<br><br>${note}${ex}`;
+  $('dataTable').tHead.innerHTML='<tr><th>Year</th><th>Observed</th><th>Status</th><th>Final (mm)</th>'+nm.map(n=>`<th>${n}</th>`).join('')+'</tr>';
+  $('dataTable').tBodies[0].innerHTML=rows.map((r,i)=>{const mi=r.target===null,e=est[i];
+    return`<tr><td>${r.year}</td><td>${mi?'—':r.target.toFixed(1)}</td><td style="font-weight:600;color:${!mi?'#10B981':e?'#F59E0B':'#EF4444'}">${!mi?'✓ Original':e?'⚠ Estimated ('+e.used.length+' stn)':'✗ Not recoverable'}</td><td style="color:${mi?'#F59E0B':'#94A3B8'}">${fin[i]===null?'—':fin[i].toFixed(1)}</td>${r.nb.map(v=>`<td>${v===null?'—':v.toFixed(1)}</td>`).join('')}</tr>`}).join('');
+  goToPage('pageResults');setTimeout(()=>{drawAvail();drawMain();drawScatter();drawVal();drawRes()},600)}
+
+/* ===== Charts ===== */
+function frame(id,title,xl,yl,x0,x1,y0,y1){
+  const cv=$(id),c=cv.getContext('2d'),W=cv.width,H=cv.height,L=100,Rt=40,Tp=70,B=80;
+  const g=c.createLinearGradient(0,0,W,H);g.addColorStop(0,'#050a14');g.addColorStop(1,'#0a1423');c.fillStyle=g;c.fillRect(0,0,W,H);
+  const sx=nice((x1-x0)/6||1),sy=nice((y1-y0)/6||1);
+  x0=Math.floor(x0/sx)*sx;x1=Math.ceil(x1/sx)*sx;y0=Math.floor(y0/sy)*sy;y1=Math.ceil(y1/sy)*sy;if(x1===x0)x1+=sx;if(y1===y0)y1+=sy;
+  const px=x=>L+(x-x0)/(x1-x0)*(W-L-Rt),py=y=>H-B-(y-y0)/(y1-y0)*(H-Tp-B);
+  c.font='14px Times New Roman';c.lineWidth=1;
+  for(let v=x0;v<=x1+1e-9;v+=sx){c.strokeStyle='rgba(56,189,248,.09)';c.beginPath();c.moveTo(px(v),py(y0));c.lineTo(px(v),py(y1));c.stroke();c.fillStyle='#94A3B8';c.textAlign='center';c.fillText(Math.round(v),px(v),H-B+22)}
+  for(let v=y0;v<=y1+1e-9;v+=sy){c.strokeStyle='rgba(56,189,248,.09)';c.beginPath();c.moveTo(px(x0),py(v));c.lineTo(px(x1),py(v));c.stroke();c.fillStyle='#94A3B8';c.textAlign='right';c.fillText(Math.round(v),L-10,py(v)+5)}
+  c.strokeStyle='rgba(56,189,248,.5)';c.lineWidth=2;c.beginPath();c.moveTo(px(x0),py(y1));c.lineTo(px(x0),py(y0));c.lineTo(px(x1),py(y0));c.stroke();
+  c.fillStyle='#94A3B8';c.textAlign='center';c.font='15px Times New Roman';c.fillText(xl,(L+W-Rt)/2,H-22);
+  c.save();c.translate(28,(Tp+H-B)/2);c.rotate(-Math.PI/2);c.fillText(yl,0,0);c.restore();
+  c.fillStyle='#38BDF8';c.font='bold 21px Times New Roman';c.fillText(title,W/2,34);
+  return{c,px,py,L,Tp,x0,x1,y0,y1}}
+function legend(c,x,y,items){c.font='14px Times New Roman';c.textAlign='left';items.forEach((it,k)=>{c.fillStyle=it[0];c.beginPath();c.arc(x,y+k*24,6,0,6.283);c.fill();c.fillStyle='#CBD5E1';c.fillText(it[1],x+16,y+k*24+5)})}
+function drawMain(){
+  if(!A)return;const{rows,fin}=A,vals=fin.filter(v=>v!==null);
+  const{c,px,py,L,Tp}=frame('recoveryCanvas','Data Recovery — Observed vs Estimated','Year','Rainfall (mm)',rows[0].year,rows[rows.length-1].year,Math.min(...vals)*.8,(Math.max(...vals)+(A.V?A.V.rmse:0))*1.08);
+  const path=(f,skip)=>{let s=false;c.beginPath();rows.forEach((r,i)=>{const v=f(r,i);if(v===null){s=false;return}s?c.lineTo(px(r.year),py(v)):c.moveTo(px(r.year),py(v));s=true});c.stroke()};
+  c.save();c.strokeStyle='rgba(245,158,11,.55)';c.lineWidth=2;c.setLineDash([6,5]);path((r,i)=>fin[i]);c.restore();
+  c.save();c.strokeStyle='#38BDF8';c.lineWidth=3;c.shadowColor='#38BDF8';c.shadowBlur=12;path(r=>r.target);c.restore();
+  rows.forEach((r,i)=>{if(r.target===null)return;c.beginPath();c.arc(px(r.year),py(r.target),5,0,6.283);c.fillStyle='#38BDF8';c.fill()});
+  rows.forEach((r,i)=>{if(r.target!==null||fin[i]===null)return;const x=px(r.year),y=py(fin[i]);
+    if(!A.V){c.beginPath();c.arc(x,y,14,0,6.283);c.strokeStyle='rgba(245,158,11,.4)';c.lineWidth=2;c.setLineDash([4,4]);c.stroke();c.setLineDash([])}
+    c.beginPath();c.arc(x,y,7,0,6.283);c.fillStyle='#F59E0B';c.shadowColor='#F59E0B';c.shadowBlur=16;c.fill();c.shadowBlur=0;
+    c.fillStyle='#F59E0B';c.font='bold 13px Times New Roman';c.textAlign='center';c.fillText(fin[i].toFixed(0),x,y-20)});
+  if(A.V){c.strokeStyle='#FDBA74';c.lineWidth=2.5;rows.forEach((r,i)=>{if(r.target!==null||fin[i]===null)return;const x=px(r.year),a=py(fin[i]+A.V.rmse),b=py(fin[i]-A.V.rmse);c.beginPath();c.moveTo(x,a);c.lineTo(x,b);c.moveTo(x-9,a);c.lineTo(x+9,a);c.moveTo(x-9,b);c.lineTo(x+9,b);c.stroke()})}
+  legend(c,L+20,Tp+14,[['#38BDF8','Observed'],['#F59E0B','Estimated (Normal Ratio)']].concat(A.V?[['#FDBA74','Error bar = ±1 RMSE (leave-one-out)']]:[]))}
+function drawVal(){
+  if(!A)return;const e=A.errs;
+  if(e.length<3){const f=frame('valCanvas','Validation — Leave-one-out','Observed (mm)','Estimated (mm)',0,1,0,1);f.c.fillStyle='#94A3B8';f.c.font='18px Times New Roman';f.c.textAlign='center';f.c.fillText('Not enough overlapping known years to validate.',500,320);return}
+  const all=e.flatMap(q=>[q.a,q.p]),lo=Math.min(...all),hi=Math.max(...all),pd=(hi-lo)*.08;
+  const{c,px,py,L,Tp,x0,x1}=frame('valCanvas','Validation — Leave-one-out (known years)','Observed (mm)','Estimated (mm)',lo-pd,hi+pd,lo-pd,hi+pd);
+  c.save();c.strokeStyle='#FFFFFF';c.lineWidth=1.5;c.setLineDash([2,6]);c.beginPath();c.moveTo(px(x0),py(x0));c.lineTo(px(x1),py(x1));c.stroke();c.restore();
+  e.forEach(q=>{c.beginPath();c.arc(px(q.a),py(q.p),6,0,6.283);c.fillStyle='rgba(56,189,248,.85)';c.shadowColor='#38BDF8';c.shadowBlur=10;c.fill();c.shadowBlur=0});
+  legend(c,L+20,Tp+14,[['#38BDF8','Known year, estimated without itself'],['#FFFFFF','1:1 line (perfect estimate)']])}
+
+
+/* ===== Extra charts ===== */
+function bgFill(c,W,H){const g=c.createLinearGradient(0,0,W,H);g.addColorStop(0,'#050a14');g.addColorStop(1,'#0a1423');c.fillStyle=g;c.fillRect(0,0,W,H)}
+function drawAvail(){
+  const{rows,nm,K,rank,N,est}=A,n=rows.length,names=['Target',...nm],cv=$('availCanvas'),rh=46,L=160,Rt=90,T=100,B=70;
+  cv.height=T+B+(K+1)*rh;const c=cv.getContext('2d'),W=cv.width,H=cv.height;bgFill(c,W,H);
+  c.fillStyle='#38BDF8';c.font='bold 21px Times New Roman';c.textAlign='center';c.fillText('Data Availability by Year and Station',W/2,34);
+  const cw=(W-L-Rt)/n,items=[['#38BDF8','Target observed'],['#F59E0B','Target estimated'],['#EF4444','Target not recoverable'],['#10B981','Neighbour data'],['rgba(239,68,68,.3)','Neighbour missing']];
+  let lx=L;c.font='13px Times New Roman';c.textAlign='left';items.forEach(it=>{c.fillStyle=it[0];c.fillRect(lx,52,16,16);c.fillStyle='#CBD5E1';c.fillText(it[1],lx+22,65);lx+=c.measureText(it[1]).width+50});
+  for(let k=0;k<=K;k++){const y=T+k*rh;
+    rows.forEach((r,i)=>{let f;if(k===0)f=r.target!==null?'#38BDF8':est[i]?'#F59E0B':'#EF4444';else f=r.nb[k-1]!==null?'#10B981':'rgba(239,68,68,.3)';
+      c.fillStyle=f;c.fillRect(L+i*cw+1,y+4,Math.max(1,cw-2),rh-8)});
+    const have=k===0?rows.filter(r=>r.target!==null).length:rows.filter(r=>r.nb[k-1]!==null).length,pri=k>0&&rank.slice(0,N).includes(k-1);
+    c.fillStyle=k===0?'#F59E0B':'#CBD5E1';c.font=(k===0?'bold ':'')+'14px Times New Roman';c.textAlign='right';c.fillText((pri?'★ ':'')+String(names[k]).slice(0,18),L-12,y+rh/2+5);
+    c.fillStyle='#94A3B8';c.font='13px Times New Roman';c.textAlign='left';c.fillText(Math.round(have/n*100)+'%',L+n*cw+10,y+rh/2+5)}
+  c.fillStyle='#94A3B8';c.font='13px Times New Roman';c.textAlign='center';const st=Math.max(1,Math.ceil(n/14));
+  rows.forEach((r,i)=>{if(i%st===0)c.fillText(r.year,L+i*cw+cw/2,T+(K+1)*rh+20)});c.fillText('Year',L+n*cw/2,H-14);
+  c.textAlign='left';c.fillText('% with data',L+n*cw+10,T-8);c.textAlign='right';c.fillText('★ = priority neighbour',L-12,T-8)}
+function mini(c,X,Y,w,h,title,x0,x1,y0,y1,xl,yl){
+  const ml=64,mb=52,mt=36,mr=18,pw=w-ml-mr,ph=h-mt-mb,ox=X+ml,oy=Y+mt,sx=nice((x1-x0)/4||1),sy=nice((y1-y0)/4||1);
+  x0=Math.floor(x0/sx)*sx;x1=Math.ceil(x1/sx)*sx;y0=Math.floor(y0/sy)*sy;y1=Math.ceil(y1/sy)*sy;
+  const px=v=>ox+(v-x0)/(x1-x0)*pw,py=v=>oy+ph-(v-y0)/(y1-y0)*ph;c.font='12px Times New Roman';c.lineWidth=1;
+  for(let v=x0;v<=x1+1e-9;v+=sx){c.strokeStyle='rgba(56,189,248,.09)';c.beginPath();c.moveTo(px(v),oy);c.lineTo(px(v),oy+ph);c.stroke();c.fillStyle='#94A3B8';c.textAlign='center';c.fillText(Math.round(v),px(v),oy+ph+16)}
+  for(let v=y0;v<=y1+1e-9;v+=sy){c.strokeStyle='rgba(56,189,248,.09)';c.beginPath();c.moveTo(ox,py(v));c.lineTo(ox+pw,py(v));c.stroke();c.fillStyle='#94A3B8';c.textAlign='right';c.fillText(Math.round(v),ox-8,py(v)+4)}
+  c.strokeStyle='rgba(56,189,248,.5)';c.lineWidth=2;c.beginPath();c.moveTo(ox,oy);c.lineTo(ox,oy+ph);c.lineTo(ox+pw,oy+ph);c.stroke();
+  c.fillStyle='#94A3B8';c.textAlign='center';c.font='13px Times New Roman';c.fillText(xl,ox+pw/2,oy+ph+38);c.save();c.translate(X+16,oy+ph/2);c.rotate(-Math.PI/2);c.fillText(yl,0,0);c.restore();
+  c.fillStyle='#E2E8F0';c.font='bold 14px Times New Roman';c.fillText(title,ox+pw/2,Y+22);return{px,py,x0,x1,ox,oy,pw,ph}}
+function drawScatter(){
+  const{rows,rank,cand,nm,est}=A,show=rank.slice(0,4),np=show.length,cv=$('scatterCanvas'),rn=Math.ceil(np/2);
+  cv.height=100+rn*400;const c=cv.getContext('2d'),W=cv.width,H=cv.height;bgFill(c,W,H);
+  c.fillStyle='#38BDF8';c.font='bold 21px Times New Roman';c.textAlign='center';c.fillText('Target vs Neighbour Stations (years with both)',W/2,34);
+  legend(c,W/2-330,60,[]);let lx=W/2-340;[['#38BDF8','Years with both'],['#F59E0B','Estimated years'],['#10B981','Normal ratio line']].forEach(it=>{c.fillStyle=it[0];c.beginPath();c.arc(lx,62,6,0,6.283);c.fill();c.fillStyle='#CBD5E1';c.font='13px Times New Roman';c.textAlign='left';c.fillText(it[1],lx+12,66);lx+=c.measureText(it[1]).width+50});
+  show.forEach((j,k)=>{const{a,b}=pair(rows,j,-1),Nx=mean(a),Ni=mean(b),rr=cand.find(q=>q.j===j).r,ep=[];
+    rows.forEach((rw,i)=>{if(rw.target===null&&rw.nb[j]!==null&&est[i])ep.push({x:rw.nb[j],y:est[i].est})});
+    const ax=[...b,...ep.map(q=>q.x)],ay=[...a,...ep.map(q=>q.y)],px0=(Math.max(...ax)-Math.min(...ax))*.08||1,py0=(Math.max(...ay)-Math.min(...ay))*.08||1;
+    const m=mini(c,(k%2)*(W/2),70+Math.floor(k/2)*400,W/2,400,`${nm[j]}   r = ${rr.toFixed(3)}   Nx/Ni = ${(Nx/Ni).toFixed(3)}`,Math.min(...ax)-px0,Math.max(...ax)+px0,Math.min(...ay)-py0,Math.max(...ay)+py0,nm[j]+' rainfall (mm)','Target rainfall (mm)');
+    c.save();c.beginPath();c.rect(m.ox,m.oy,m.pw,m.ph);c.clip();c.strokeStyle='#10B981';c.lineWidth=2.5;c.beginPath();c.moveTo(m.px(m.x0),m.py(Nx/Ni*m.x0));c.lineTo(m.px(m.x1),m.py(Nx/Ni*m.x1));c.stroke();c.restore();
+    a.forEach((v,i)=>{c.beginPath();c.arc(m.px(b[i]),m.py(v),5,0,6.283);c.fillStyle='rgba(56,189,248,.85)';c.fill()});
+    ep.forEach(q=>{c.beginPath();c.arc(m.px(q.x),m.py(q.y),7,0,6.283);c.fillStyle='#F59E0B';c.shadowColor='#F59E0B';c.shadowBlur=10;c.fill();c.shadowBlur=0;c.strokeStyle='#0A1628';c.lineWidth=1.5;c.stroke()})})}
+function drawRes(){
+  const e=A.errs;
+  if(e.length<3){const f=frame('resCanvas','Validation Errors by Year','Year','Error (mm)',0,1,-1,1);f.c.fillStyle='#94A3B8';f.c.font='18px Times New Roman';f.c.textAlign='center';f.c.fillText('Not enough overlapping known years to validate.',500,320);return}
+  const yr=e.map(q=>q.year),er=e.map(q=>q.p-q.a),lim=Math.max(...er.map(Math.abs),A.V.rmse)*1.25||1;
+  const{c,px,py,L,Tp,x0,x1}=frame('resCanvas','Leave-one-out Error by Year (estimated − observed)','Year','Error (mm)',yr[0]-1,yr[yr.length-1]+1,-lim,lim);
+  const bw=Math.max(4,(px(x0+1)-px(x0))*.55),z=py(0);
+  c.strokeStyle='rgba(253,186,116,.7)';c.lineWidth=1.5;c.setLineDash([6,5]);[A.V.rmse,-A.V.rmse].forEach(v=>{c.beginPath();c.moveTo(px(x0),py(v));c.lineTo(px(x1),py(v));c.stroke()});c.setLineDash([]);
+  er.forEach((v,i)=>{const x=px(yr[i])-bw/2,col=v>=0?'#F59E0B':'#38BDF8';c.fillStyle=col;c.shadowColor=col;c.shadowBlur=8;c.fillRect(x,Math.min(z,py(v)),bw,Math.abs(py(v)-z));c.shadowBlur=0});
+  c.strokeStyle='#FFFFFF';c.lineWidth=1.5;c.beginPath();c.moveTo(px(x0),z);c.lineTo(px(x1),z);c.stroke();
+  legend(c,L+20,Tp+14,[['#F59E0B','Overestimated'],['#38BDF8','Underestimated'],['#FDBA74',`±1 RMSE = ${A.V.rmse.toFixed(1)} mm`]])}
+
+/* ===== Save ===== */
+function dl(txt,type,name){const u=URL.createObjectURL(new Blob([txt],{type})),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000)}
+function saveReport(){if(!A)return;const l='='.repeat(45),V=A.V;
+  let o=`${l}\n  MISSING DATA RECOVERY REPORT\n  Normal Ratio Method\n${l}\n\nGenerated: ${new Date().toLocaleString()}\nYears: ${A.rows.length}\nMissing: ${A.miss}\nRecovered: ${A.done}\nStations (priority): ${A.rank.slice(0,A.N).map(j=>A.nm[j]).join(', ')}\n`;
+  if(V)o+=`\nLeave-one-out validation (${V.n} years)\nRMSE: ${V.rmse.toFixed(2)} mm\nMAE: ${V.mae.toFixed(2)} mm\nBias: ${V.bias.toFixed(2)} %\nR2: ${V.r2.toFixed(4)}\n`;
+  o+='\nYear | Observed | Final | Status\n';A.rows.forEach((r,i)=>o+=`${r.year} | ${r.target===null?'':r.target.toFixed(1)} | ${A.fin[i]===null?'':A.fin[i].toFixed(1)} | ${r.target!==null?'ORIGINAL':A.est[i]?'ESTIMATED':'NOT RECOVERABLE'}\n`);
+  o+='\nDeveloped by Junaid Ali · Civil Engineering Research\n';dl(o,'text/plain','missing_data_report_'+Date.now()+'.txt');msg('Report saved.')}
+function saveCSV(){if(!A)return;let o='year,observed,estimated,final,status\n';
+  A.rows.forEach((r,i)=>{o+=`${r.year},${r.target===null?'':r.target.toFixed(2)},${A.est[i]?A.est[i].est.toFixed(2):''},${A.fin[i]===null?'':A.fin[i].toFixed(2)},${r.target!==null?'ORIGINAL':A.est[i]?'ESTIMATED':'NOT_RECOVERABLE'}\n`});
+  dl(o,'text/csv','recovered_data_'+Date.now()+'.csv');msg('CSV saved.')}
+/* ===== Export: chart PNGs and ZIP ===== */
+const CH=[['availCanvas','Data Availability','data_availability'],['recoveryCanvas','Observed vs Estimated','observed_vs_estimated'],['scatterCanvas','Target vs Neighbour Stations','target_vs_neighbours'],['valCanvas','Validation: Observed vs Estimated','validation_scatter'],['resCanvas','Validation Errors by Year','validation_errors']];
+function dlBlob(b,name){const u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000)}
+const pngBytes=id=>{const b=atob($(id).toDataURL('image/png').split(',')[1]),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u};
+function dlChart(id,name){if(!A){msg('Run the estimation first.');return}$(id).toBlob(b=>dlBlob(b,'missing_'+name+'.png'))}
+const CRCT=(()=>{const t=[];for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+const crc32=b=>{let c=0xFFFFFFFF;for(let i=0;i<b.length;i++)c=CRCT[(c^b[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0};
+function zip(files){const enc=new TextEncoder(),parts=[],cd=[];let off=0;const d=new Date(),dt=(d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1),dd=((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate();
+  for(const f of files){const nm=enc.encode(f.name),crc=crc32(f.data),sz=f.data.length;
+    const lh=new DataView(new ArrayBuffer(30));lh.setUint32(0,0x04034b50,true);lh.setUint16(4,20,true);lh.setUint16(6,0x0800,true);lh.setUint16(10,dt,true);lh.setUint16(12,dd,true);lh.setUint32(14,crc,true);lh.setUint32(18,sz,true);lh.setUint32(22,sz,true);lh.setUint16(26,nm.length,true);
+    parts.push(new Uint8Array(lh.buffer),nm,f.data);
+    const ch=new DataView(new ArrayBuffer(46));ch.setUint32(0,0x02014b50,true);ch.setUint16(4,20,true);ch.setUint16(6,20,true);ch.setUint16(8,0x0800,true);ch.setUint16(12,dt,true);ch.setUint16(14,dd,true);ch.setUint32(16,crc,true);ch.setUint32(20,sz,true);ch.setUint32(24,sz,true);ch.setUint16(28,nm.length,true);ch.setUint32(42,off,true);
+    cd.push(new Uint8Array(ch.buffer),nm);off+=30+nm.length+sz}
+  const cs=cd.reduce((t,a)=>t+a.length,0),e=new DataView(new ArrayBuffer(22));e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,cs,true);e.setUint32(16,off,true);
+  return new Blob([...parts,...cd,new Uint8Array(e.buffer)],{type:'application/zip'})}
+function saveChartsZip(){if(!A){msg('Run the estimation first.');return}
+  dlBlob(zip(CH.map(c=>({name:'missing_'+c[2]+'.png',data:pngBytes(c[0])}))),'missing_charts_'+Date.now()+'.zip');msg('Charts ZIP saved.')}
+</script>
+</body>
+</html>

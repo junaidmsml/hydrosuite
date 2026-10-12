@@ -1,0 +1,1205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hydrograph Analysis — Precipitation Analyzer</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Times New Roman', Times, serif; cursor: none; }
+  body { background: #0A1628; min-height: 100vh; overflow-x: hidden; color: #E2E8F0; position: relative; }
+
+  .cursor-dot {
+    position: fixed; width: 8px; height: 8px;
+    background: #38BDF8; border-radius: 50%;
+    pointer-events: none; z-index: 9999;
+    box-shadow: 0 0 20px #38BDF8, 0 0 40px #38BDF8;
+    transform: translate(-50%, -50%);
+  }
+  .cursor-ring {
+    position: fixed; width: 40px; height: 40px;
+    border: 2px solid rgba(56, 189, 248, 0.5);
+    border-radius: 50%;
+    pointer-events: none; z-index: 9998;
+    transform: translate(-50%, -50%);
+    transition: all 0.3s ease;
+  }
+  .cursor-ring.hover {
+    width: 70px; height: 70px;
+    border-color: rgba(34, 211, 238, 0.9);
+    background: rgba(34, 211, 238, 0.12);
+    box-shadow: 0 0 30px rgba(56, 189, 248, 0.4);
+  }
+  .cursor-ring.click {
+    width: 100px; height: 100px;
+    border-color: rgba(34, 211, 238, 1);
+    background: rgba(34, 211, 238, 0.2);
+    box-shadow: 0 0 60px rgba(56, 189, 248, 0.8);
+  }
+
+  .rain-canvas, .wave-canvas, #trailCanvas {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%; pointer-events: none;
+  }
+  .rain-canvas { z-index: 1; }
+  .wave-canvas { z-index: 2; }
+  #trailCanvas { z-index: 3; }
+
+  .gradient-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: 
+      radial-gradient(circle at 20% 30%, rgba(56,189,248,0.08) 0%, transparent 50%),
+      radial-gradient(circle at 80% 70%, rgba(14,165,233,0.06) 0%, transparent 50%);
+    z-index: 1; pointer-events: none;
+    animation: gradientShift 12s ease-in-out infinite alternate;
+  }
+  @keyframes gradientShift {
+    0% { transform: scale(1) rotate(0deg); opacity: 0.6; }
+    100% { transform: scale(1.15) rotate(2deg); opacity: 1; }
+  }
+  .grid-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background-image: 
+      linear-gradient(rgba(56,189,248,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(56,189,248,0.03) 1px, transparent 1px);
+    background-size: 80px 80px;
+    z-index: 1; pointer-events: none;
+    animation: gridPulse 8s ease-in-out infinite;
+  }
+  @keyframes gridPulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+
+  .page {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    overflow-y: auto; z-index: 10;
+    opacity: 0; visibility: hidden;
+    transform: translateX(100%) scale(0.95);
+    transition: all 0.7s cubic-bezier(0.23, 1, 0.32, 1);
+    padding: 30px 20px;
+  }
+  .page.active { opacity: 1; visibility: visible; transform: translateX(0) scale(1); }
+  .page.exit-left { transform: translateX(-100%) scale(0.95); opacity: 0; }
+
+  .container { max-width: 1300px; margin: 0 auto; position: relative; z-index: 10; }
+
+  .page-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 30px; padding: 20px 25px;
+    background: rgba(15, 23, 42, 0.7);
+    backdrop-filter: blur(20px);
+    border-radius: 18px;
+    border: 1px solid rgba(56,189,248,0.15);
+  }
+  .page-header h2 { font-size: 1.4rem; color: #38BDF8; letter-spacing: 1px; }
+
+  .back-btn {
+    padding: 10px 22px;
+    border: 1px solid rgba(56,189,248,0.3);
+    border-radius: 10px;
+    background: rgba(56,189,248,0.08);
+    color: #38BDF8;
+    font-size: 0.85rem;
+    cursor: none; font-weight: 600;
+    transition: all 0.3s ease;
+  }
+  .back-btn:hover {
+    background: rgba(56,189,248,0.2);
+    transform: translateY(-3px);
+    box-shadow: 0 10px 25px rgba(56,189,248,0.2);
+  }
+
+  .hero { text-align: center; padding: 60px 20px 40px; margin-bottom: 30px; }
+  .brand-badge {
+    display: inline-block; padding: 8px 22px;
+    border-radius: 30px;
+    background: rgba(56,189,248,0.08);
+    border: 1px solid rgba(56,189,248,0.3);
+    font-size: 0.72rem; letter-spacing: 4px;
+    text-transform: uppercase; color: #38BDF8;
+    margin-bottom: 24px;
+    animation: badgeFloat 3s ease-in-out infinite;
+  }
+  @keyframes badgeFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+  }
+  .hero h1 {
+    font-size: 3.5rem; font-weight: 900;
+    background: linear-gradient(90deg, #38BDF8, #0EA5E9, #22D3EE, #38BDF8);
+    background-size: 300% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: shine 5s linear infinite;
+    margin-bottom: 12px;
+    letter-spacing: -1px; line-height: 1.1;
+  }
+  @keyframes shine { to { background-position: 300% center; } }
+  .author-name {
+    font-size: 1.15rem; color: #38BDF8; font-weight: 700;
+    letter-spacing: 3px; margin-bottom: 16px;
+    animation: nameGlow 3s ease-in-out infinite;
+  }
+  @keyframes nameGlow {
+    0%, 100% { text-shadow: 0 0 15px rgba(56,189,248,0.5); }
+    50% { text-shadow: 0 0 35px rgba(56,189,248,0.9), 0 0 60px rgba(14,165,233,0.5); }
+  }
+  .hero .subtitle {
+    font-size: 1rem; color: #94A3B8;
+    letter-spacing: 2px; margin-bottom: 12px;
+    font-style: italic;
+  }
+  .hero .description {
+    color: #64748B; font-size: 0.95rem;
+    max-width: 720px; margin: 0 auto; line-height: 1.7;
+  }
+
+  .section-title {
+    font-size: 1.4rem; color: #E2E8F0;
+    margin: 40px 0 20px 0; padding-bottom: 12px;
+    border-bottom: 1px solid rgba(56,189,248,0.15);
+    display: flex; align-items: center;
+  }
+  .section-title::before {
+    content: ''; display: inline-block;
+    width: 5px; height: 24px;
+    background: linear-gradient(180deg, #38BDF8, #22D3EE);
+    margin-right: 14px; border-radius: 3px;
+    box-shadow: 0 0 12px rgba(56,189,248,0.5);
+  }
+
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px; margin-bottom: 40px;
+  }
+  .feature-card {
+    background: rgba(15, 23, 42, 0.7);
+    backdrop-filter: blur(20px);
+    border-radius: 14px;
+    padding: 24px;
+    border: 1px solid rgba(56,189,248,0.15);
+    transition: all 0.4s ease;
+    cursor: none;
+  }
+  .feature-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 20px 40px rgba(0,0,0,0.4), 0 0 30px rgba(56,189,248,0.15);
+    border-color: rgba(56,189,248,0.4);
+  }
+  .feature-card h4 {
+    font-size: 1.05rem; color: #38BDF8;
+    margin-bottom: 10px; letter-spacing: 0.5px;
+  }
+  .feature-card p {
+    font-size: 0.88rem; color: #94A3B8; line-height: 1.6;
+  }
+
+  .input-panel {
+    background: rgba(15, 23, 42, 0.7);
+    backdrop-filter: blur(20px);
+    border-radius: 16px;
+    padding: 28px;
+    border: 1px solid rgba(56,189,248,0.15);
+    margin-bottom: 24px;
+  }
+  .input-panel h3 {
+    font-size: 1rem; color: #38BDF8;
+    margin-bottom: 20px; letter-spacing: 1.5px;
+    text-transform: uppercase;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .input-panel h3::before {
+    content: ''; width: 4px; height: 18px;
+    background: linear-gradient(180deg, #38BDF8, #22D3EE);
+    border-radius: 2px;
+  }
+  .input-row {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 20px; margin-bottom: 16px;
+  }
+  label {
+    display: block; font-size: 0.78rem;
+    color: #94A3B8; margin-bottom: 8px;
+    text-transform: uppercase; letter-spacing: 1px;
+    font-weight: 600;
+  }
+  input, select, textarea {
+    width: 100%; padding: 12px 16px;
+    border-radius: 10px;
+    border: 1px solid rgba(56,189,248,0.2);
+    background: rgba(0, 0, 0, 0.4);
+    color: #E2E8F0; font-size: 0.95rem;
+    font-family: 'Times New Roman', serif;
+    outline: none; cursor: none;
+    transition: all 0.3s ease;
+  }
+  input:focus, select:focus, textarea:focus {
+    border-color: #38BDF8;
+    box-shadow: 0 0 20px rgba(56,189,248,0.3);
+    background: rgba(56,189,248,0.05);
+  }
+  textarea {
+    min-height: 160px;
+    resize: vertical;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    line-height: 1.7;
+  }
+
+  .upload-box {
+    border: 2px dashed rgba(56,189,248,0.4);
+    border-radius: 14px;
+    padding: 40px 20px;
+    text-align: center;
+    background: rgba(56,189,248,0.03);
+    transition: all 0.3s ease;
+    cursor: none;
+    margin-bottom: 20px;
+  }
+  .upload-box:hover {
+    border-color: #38BDF8;
+    background: rgba(56,189,248,0.08);
+    box-shadow: 0 0 30px rgba(56,189,248,0.15);
+  }
+  .upload-box .upload-icon { font-size: 2.5rem; margin-bottom: 10px; }
+  .upload-box p { color: #94A3B8; font-size: 0.9rem; margin-bottom: 15px; }
+  .upload-box input[type="file"] { display: none; }
+
+  .station-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+    background: rgba(0,0,0,0.3);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .station-table th {
+    background: rgba(56,189,248,0.15);
+    color: #38BDF8;
+    padding: 12px;
+    text-align: left;
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .station-table td {
+    padding: 12px;
+    border-bottom: 1px solid rgba(56,189,248,0.08);
+    color: #E2E8F0;
+    font-size: 0.9rem;
+  }
+  .station-table tr:hover td {
+    background: rgba(56,189,248,0.05);
+  }
+
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 18px; margin-bottom: 30px;
+  }
+  .summary-card {
+    background: rgba(15, 23, 42, 0.7);
+    backdrop-filter: blur(20px);
+    border-radius: 14px;
+    padding: 20px;
+    border: 1px solid rgba(56,189,248,0.15);
+    text-align: center;
+    transition: all 0.4s ease;
+  }
+  .summary-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 20px 40px rgba(0,0,0,0.4), 0 0 30px rgba(56,189,248,0.15);
+    border-color: rgba(56,189,248,0.4);
+  }
+  .summary-label {
+    font-size: 0.72rem; color: #94A3B8;
+    text-transform: uppercase; letter-spacing: 1px;
+    margin-bottom: 10px;
+  }
+  .summary-value {
+    font-size: 1.5rem; font-weight: 800;
+    color: #38BDF8;
+    font-family: 'Courier New', monospace;
+  }
+  .summary-value.good { color: #10B981; }
+  .summary-value.bad { color: #EF4444; }
+  .summary-value.warn { color: #F59E0B; }
+  .summary-value.purple { color: #A78BFA; }
+  .summary-unit {
+    font-size: 0.75rem; color: #64748B; margin-top: 4px;
+  }
+
+  .canvas-wrapper {
+    background: rgba(5, 10, 20, 0.8);
+    backdrop-filter: blur(15px);
+    border-radius: 16px;
+    padding: 20px;
+    border: 1px solid rgba(56,189,248,0.2);
+    margin-bottom: 24px;
+  }
+  canvas.chart-canvas {
+    width: 100%; height: auto;
+    border-radius: 10px; display: block;
+  }
+
+  .formula-box {
+    background: rgba(34, 211, 238, 0.05);
+    border-left: 4px solid #22D3EE;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 24px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.95rem;
+    color: #38BDF8;
+    line-height: 1.7;
+  }
+  .formula-box .formula-label {
+    font-family: 'Times New Roman', serif;
+    color: #94A3B8;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+
+  .info-box {
+    background: rgba(34, 211, 238, 0.08);
+    border-left: 4px solid #22D3EE;
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+    color: #CBD5E1;
+    font-size: 0.92rem;
+    line-height: 1.7;
+  }
+  .info-box strong { color: #38BDF8; }
+  .info-box.warning {
+    background: rgba(245, 158, 11, 0.08);
+    border-left-color: #F59E0B;
+  }
+  .info-box.warning strong { color: #F59E0B; }
+  .info-box.success {
+    background: rgba(16, 185, 129, 0.08);
+    border-left-color: #10B981;
+  }
+  .info-box.success strong { color: #10B981; }
+
+  .liquid-btn {
+    position: relative; display: inline-block;
+    padding: 14px 36px; border: none;
+    border-radius: 50px;
+    background: linear-gradient(135deg, #38BDF8, #0EA5E9, #22D3EE);
+    background-size: 300% 300%;
+    color: #0A1628; font-size: 0.9rem;
+    font-weight: 800; letter-spacing: 1.5px;
+    text-transform: uppercase; cursor: none;
+    overflow: hidden;
+    transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+    box-shadow: 0 10px 30px rgba(56, 189, 248, 0.3), inset 0 2px 8px rgba(255, 255, 255, 0.3);
+    animation: liquidFlow 4s ease infinite;
+    z-index: 1;
+  }
+  @keyframes liquidFlow {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+  .liquid-btn::before {
+    content: '';
+    position: absolute; top: -50%; left: -50%;
+    width: 200%; height: 200%;
+    background: radial-gradient(circle, rgba(255,255,255,0.4) 0%, transparent 60%);
+    opacity: 0;
+    transition: opacity 0.5s ease, transform 0.6s ease;
+    transform: scale(0);
+    border-radius: 50%; z-index: -1;
+  }
+  .liquid-btn:hover::before {
+    opacity: 1; transform: scale(1.5);
+  }
+  .liquid-btn:hover {
+    transform: translateY(-5px) scale(1.05);
+    box-shadow: 0 20px 50px rgba(56, 189, 248, 0.5), 0 0 80px rgba(34, 211, 238, 0.3);
+  }
+
+  .footer {
+    text-align: center; padding: 50px 20px 30px;
+    color: #475569; font-size: 0.85rem;
+    letter-spacing: 1px; font-style: italic;
+    border-top: 1px solid rgba(56,189,248,0.1);
+    margin-top: 60px;
+  }
+  .footer span { color: #38BDF8; font-weight: 600; }
+
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-track { background: #0A1628; }
+  ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, #38BDF8, #22D3EE); border-radius: 10px; }
+
+  @media (max-width: 700px) {
+    .hero h1 { font-size: 2.2rem; }
+    .input-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="cursor-dot" id="cursorDot"></div>
+<div class="cursor-ring" id="cursorRing"></div>
+<canvas id="rainCanvas" class="rain-canvas"></canvas>
+<canvas id="waveCanvas" class="wave-canvas"></canvas>
+<canvas id="trailCanvas"></canvas>
+<div class="gradient-overlay"></div>
+<div class="grid-overlay"></div>
+
+<!-- ═══ PAGE 1: DASHBOARD ═══ -->
+<div class="page active" id="pageDashboard">
+  <div class="container">
+    <div class="page-header">
+      <h2>Hydrograph Analysis</h2>
+      <button class="back-btn" onclick="alert('Back — merge with main index.html')">← Back</button>
+    </div>
+
+    <div class="hero">
+      <div class="brand-badge">Module 9 — Unit Hydrograph</div>
+      <h1>Hydrograph Analysis</h1>
+      <div class="author-name">by Junaid Ali</div>
+      <p class="subtitle">Unit Hydrograph & Direct Runoff</p>
+      <p class="description">
+        Analyze storm hydrographs to separate base flow from direct runoff, derive unit hydrographs,
+        and compute catchment characteristics. Includes S-curve generation for different durations.
+      </p>
+    </div>
+
+    <div class="section-title">What This Module Does</div>
+    <div class="features-grid">
+      <div class="feature-card">
+        <h4>Base Flow Separation</h4>
+        <p>Separate base flow from direct runoff using the straight-line method.</p>
+      </div>
+      <div class="feature-card">
+        <h4>Direct Runoff Hydrograph</h4>
+        <p>Extract DRH by subtracting base flow from the total hydrograph.</p>
+      </div>
+      <div class="feature-card">
+        <h4>Unit Hydrograph</h4>
+        <p>Derive the D-hour unit hydrograph (DRH ÷ effective rainfall depth), check it integrates to 1 mm, and build the S-curve.</p>
+      </div>
+      <div class="feature-card">
+        <h4>Rich Visualization</h4>
+        <p>Multiple charts showing base flow, DRH, UH, and runoff distribution.</p>
+      </div>
+    </div>
+
+    <div style="text-align: center; margin-top: 40px;">
+      <button class="liquid-btn" onclick="goToPage('pageInput')">
+        Start Analysis →
+      </button>
+    </div>
+
+    <div class="footer">
+      Developed by <span>Junaid Ali</span> · Civil Engineering Research
+    </div>
+  </div>
+</div>
+
+<!-- ═══ PAGE 2: INPUT ═══ -->
+<div class="page" id="pageInput">
+  <div class="container">
+    <div class="page-header">
+      <h2>Hydrograph Analysis — Input</h2>
+      <button class="back-btn" onclick="goToPage('pageDashboard')">← Back</button>
+    </div>
+
+    <div class="info-box">
+      <strong>What data do you need?</strong> Storm hydrograph — time series of streamflow 
+      during a storm event. Enter <strong>time (hours), discharge (m³/s)</strong> for each interval. 
+      Include the rising limb, peak, and recession.
+    </div>
+
+    <div class="input-panel">
+      <h3>Option 1: Upload CSV File</h3>
+      <div class="upload-box" onclick="document.getElementById('csvFile').click()">
+        <div class="upload-icon">📁</div>
+        <p>Click to upload CSV file</p>
+        <p style="font-size: 0.78rem; color: #64748B;">Format: time, discharge</p>
+        <input type="file" id="csvFile" accept=".csv" onchange="handleCsvUpload(event)">
+      </div>
+      <div id="csvStatus" style="display: none; padding: 12px; background: rgba(34,211,238,0.1); border-radius: 8px; border-left: 3px solid #22D3EE; margin-top: 15px;">
+        <span style="color: #22D3EE; font-size: 0.9rem;">✅ CSV loaded: <span id="csvFileName"></span></span>
+      </div>
+    </div>
+
+    <div class="input-panel">
+      <h3>Option 2: Manual Entry</h3>
+      <p style="font-size: 0.88rem; color: #94A3B8; margin-bottom: 20px;">
+        Format: <strong>time, discharge</strong> (one row per interval)
+      </p>
+      <textarea id="manualData" placeholder="0, 12&#10;1, 15&#10;2, 25&#10;3, 45"></textarea>
+      <div style="display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap;">
+        <button class="liquid-btn" style="padding: 10px 24px; font-size: 0.82rem;" onclick="loadDemoData()">
+          Load Demo Data
+        </button>
+        <button class="liquid-btn" style="padding: 10px 24px; font-size: 0.82rem; background: linear-gradient(135deg, #EF4444, #DC2626);" onclick="document.getElementById('manualData').value = ''">
+          Clear
+        </button>
+      </div>
+    </div>
+
+    <div class="input-panel">
+      <h3>Analysis Settings</h3>
+      <div class="input-row">
+        <div>
+          <label>Catchment Area (km²)</label>
+          <input type="number" id="catchmentArea" value="50" step="0.1">
+        </div>
+        <div>
+          <label>Effective Rainfall Depth (mm) — optional</label>
+          <input type="number" id="effectiveRainfall" placeholder="blank = computed from DRH" step="0.1">
+        </div>
+      </div>
+      <div class="input-row">
+        <div><label>Effective Rainfall Duration D (hr)</label><input type="number" id="rainDuration" value="1" step="0.25" min="0.25"></div>
+        <div><label>Total Rainfall P (mm) — optional, for runoff coeff.</label><input type="number" id="totalRain" placeholder="blank = not computed" step="0.1"></div>
+      </div>
+      <div class="input-row">
+        <div><label>Straight-line: end of direct runoff (hr) — optional</label><input type="number" id="drEndTime" placeholder="blank = auto: N = 0.83·A^0.2 days after peak" step="0.5"></div>
+        <div></div>
+      </div>
+      <div class="input-row">
+        <div>
+          <label>Base Flow Separation Method</label>
+          <select id="baseflowMethod">
+            <option value="straight">Straight-Line Method</option>
+            <option value="constant">Constant Base Flow</option>
+            <option value="manual">Manual Base Flow Value</option>
+          </select>
+        </div>
+        <div id="manualBaseGroup" style="display: none;">
+          <label>Manual Base Flow (m³/s)</label>
+          <input type="number" id="manualBaseflow" value="10" step="0.1">
+        </div>
+      </div>
+    </div>
+
+    <div style="text-align: center; margin-top: 30px;">
+      <button class="liquid-btn" onclick="runAnalysis()">
+        Run Analysis →
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ PAGE 3: RESULTS ═══ -->
+<div class="page" id="pageResults">
+  <div class="container">
+    <div class="page-header">
+      <h2>Hydrograph Analysis — Results</h2>
+      <button class="back-btn" onclick="goToPage('pageInput')">← Back</button>
+    </div>
+
+    <div id="hydroVerdict"></div>
+
+    <div class="summary-grid" id="summary"></div>
+
+    <div class="section-title">📈 Storm Hydrograph with Base Flow Separation</div>
+    <div class="canvas-wrapper">
+      <canvas id="mainHydrographCanvas" class="chart-canvas" width="1200" height="600"></canvas>
+    </div>
+
+    <div class="section-title">📊 Direct Runoff Hydrograph (DRH)</div>
+    <div class="canvas-wrapper">
+      <canvas id="drhCanvas" class="chart-canvas" width="1200" height="500"></canvas>
+    </div>
+
+    <div class="section-title">📉 Unit Hydrograph (<span id="uhDur">1</span>-hour)</div>
+    <div class="canvas-wrapper">
+      <canvas id="uhCanvas" class="chart-canvas" width="1200" height="500"></canvas>
+    </div>
+
+    <div class="section-title" id="sTitle">📈 S-Curve (S-Hydrograph)</div>
+    <div class="canvas-wrapper" id="sWrap">
+      <canvas id="sCanvas" class="chart-canvas" width="1200" height="500"></canvas>
+    </div>
+
+    <div class="section-title">🥧 Runoff Components Distribution (Pie Chart)</div>
+    <div class="canvas-wrapper">
+      <canvas id="pieCanvas" class="chart-canvas" width="1100" height="500"></canvas>
+    </div>
+
+    <div class="section-title">📊 Hourly Runoff Volume (Bar Chart)</div>
+    <div class="canvas-wrapper">
+      <canvas id="volumeBarCanvas" class="chart-canvas" width="1200" height="450"></canvas>
+    </div>
+
+    <div class="section-title">💧 Runoff Distribution by Time Period</div>
+    <div class="canvas-wrapper">
+      <canvas id="distributionCanvas" class="chart-canvas" width="1200" height="450"></canvas>
+    </div>
+
+    <div class="section-title">📐 Catchment Characteristics</div>
+    <div class="formula-box" id="formulaBox"></div>
+
+    <div class="section-title">Detailed Hydrograph Data</div>
+    <div class="input-panel">
+      <div style="overflow-x: auto;">
+        <table class="station-table" id="dataTable">
+          <thead>
+            <tr>
+              <th>Time (hr)</th>
+              <th>Total Flow (m³/s)</th>
+              <th>Base Flow (m³/s)</th>
+              <th>Direct Runoff (m³/s)</th>
+              <th>UH (m³/s per mm)</th>
+              <th>S-curve (m³/s per mm)</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div style="text-align: center; margin-top: 30px;">
+      <button class="liquid-btn" onclick="saveResults()" style="margin-right: 10px;">
+        Save Report (TXT)
+      </button>
+      <button class="liquid-btn" onclick="saveCSV()" style="margin-right: 10px;">
+        Save Data (CSV)</button>
+      <button class="liquid-btn" onclick="saveSummaryCSV()" style="margin-right: 10px;">Save Summary (CSV)</button>
+      <button class="liquid-btn" onclick="dlAll()" style="margin-right: 10px;">⬇ All Charts (PNG)</button>
+      <button class="liquid-btn" onclick="goToPage('pageDashboard')" style="background: linear-gradient(135deg, #0EA5E9, #38BDF8);">
+        Back to Dashboard
+      </button>
+    </div>
+
+    <div class="footer">
+      Developed by <span>Junaid Ali</span> · Civil Engineering Research
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══ SAFE EVENT LISTENERS ═══ */
+document.addEventListener('DOMContentLoaded', function() {
+  
+  const cursorDot = document.getElementById('cursorDot');
+  const cursorRing = document.getElementById('cursorRing');
+  const trailCanvas = document.getElementById('trailCanvas');
+  const tCtx = trailCanvas.getContext('2d');
+  let trailParticles = [];
+
+  function resizeTrail() {
+    trailCanvas.width = window.innerWidth;
+    trailCanvas.height = window.innerHeight;
+  }
+  resizeTrail();
+  window.addEventListener('resize', resizeTrail);
+
+  document.addEventListener('mousemove', (e) => {
+    cursorDot.style.left = e.clientX + 'px';
+    cursorDot.style.top = e.clientY + 'px';
+    cursorRing.style.left = e.clientX + 'px';
+    cursorRing.style.top = e.clientY + 'px';
+    for (let i = 0; i < 2; i++) {
+      trailParticles.push({
+        x: e.clientX, y: e.clientY,
+        vx: (Math.random() - 0.5) * 3,
+        vy: (Math.random() - 0.5) * 3,
+        life: 1, size: Math.random() * 4 + 2,
+        color: Math.random() > 0.5 ? '56, 189, 248' : '34, 211, 238'
+      });
+    }
+  });
+
+  document.addEventListener('mousedown', () => {
+    cursorRing.classList.add('click');
+    for (let i = 0; i < 15; i++) {
+      trailParticles.push({
+        x: parseFloat(cursorDot.style.left),
+        y: parseFloat(cursorDot.style.top),
+        vx: (Math.random() - 0.5) * 8,
+        vy: (Math.random() - 0.5) * 8,
+        life: 1, size: Math.random() * 6 + 3,
+        color: '34, 211, 238'
+      });
+    }
+  });
+  document.addEventListener('mouseup', () => cursorRing.classList.remove('click'));
+
+  document.querySelectorAll('button, .liquid-btn, input, .upload-box, .back-btn, .feature-card, textarea, select').forEach(el => {
+    el.addEventListener('mouseenter', () => cursorRing.classList.add('hover'));
+    el.addEventListener('mouseleave', () => cursorRing.classList.remove('hover'));
+  });
+
+  function animateTrail() {
+    tCtx.clearRect(0, 0, trailCanvas.width, trailCanvas.height);
+    trailParticles = trailParticles.filter(p => p.life > 0);
+    trailParticles.forEach(p => {
+      p.x += p.vx; p.y += p.vy;
+      p.life -= 0.025; p.size *= 0.97;
+      tCtx.beginPath();
+      tCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      tCtx.fillStyle = `rgba(${p.color}, ${p.life * 0.8})`;
+      tCtx.shadowColor = `rgba(${p.color}, ${p.life})`;
+      tCtx.shadowBlur = 15;
+      tCtx.fill();
+      tCtx.shadowBlur = 0;
+    });
+    requestAnimationFrame(animateTrail);
+  }
+  animateTrail();
+
+  const rainCanvas = document.getElementById('rainCanvas');
+  const rCtx = rainCanvas.getContext('2d');
+  let raindrops = [];
+  function resizeRain() {
+    rainCanvas.width = window.innerWidth;
+    rainCanvas.height = window.innerHeight;
+  }
+  resizeRain();
+  window.addEventListener('resize', resizeRain);
+  class Raindrop {
+    constructor() { this.reset(); }
+    reset() {
+      this.x = Math.random() * rainCanvas.width;
+      this.y = Math.random() * -rainCanvas.height;
+      this.length = Math.random() * 20 + 10;
+      this.speed = Math.random() * 3 + 2;
+      this.opacity = Math.random() * 0.3 + 0.15;
+      this.width = Math.random() * 1.5 + 0.5;
+    }
+    update() { this.y += this.speed; if (this.y > rainCanvas.height + 20) this.reset(); }
+    draw() {
+      rCtx.beginPath();
+      rCtx.strokeStyle = `rgba(56, 189, 248, ${this.opacity})`;
+      rCtx.lineWidth = this.width;
+      rCtx.lineCap = 'round';
+      rCtx.moveTo(this.x, this.y);
+      rCtx.lineTo(this.x - 1, this.y + this.length);
+      rCtx.stroke();
+    }
+  }
+  for (let i = 0; i < 120; i++) raindrops.push(new Raindrop());
+  function animateRain() {
+    rCtx.clearRect(0, 0, rainCanvas.width, rainCanvas.height);
+    raindrops.forEach(r => { r.update(); r.draw(); });
+    requestAnimationFrame(animateRain);
+  }
+  animateRain();
+
+  const waveCanvas = document.getElementById('waveCanvas');
+  const wCtx = waveCanvas.getContext('2d');
+  let waveOffset = 0;
+  function resizeWave() {
+    waveCanvas.width = window.innerWidth;
+    waveCanvas.height = window.innerHeight;
+  }
+  resizeWave();
+  window.addEventListener('resize', resizeWave);
+  function drawWave(yOffset, amplitude, wavelength, color, speed, opacity) {
+    wCtx.beginPath();
+    wCtx.moveTo(0, waveCanvas.height);
+    for (let x = 0; x <= waveCanvas.width; x += 5) {
+      const y = yOffset + Math.sin((x + waveOffset * speed) / wavelength) * amplitude;
+      wCtx.lineTo(x, y);
+    }
+    wCtx.lineTo(waveCanvas.width, waveCanvas.height);
+    wCtx.closePath();
+    wCtx.fillStyle = color;
+    wCtx.globalAlpha = opacity;
+    wCtx.fill();
+    wCtx.globalAlpha = 1;
+  }
+  function animateWaves() {
+    wCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
+    drawWave(waveCanvas.height - 60, 25, 200, '#0EA5E9', 1, 0.15);
+    drawWave(waveCanvas.height - 40, 30, 250, '#38BDF8', 0.8, 0.12);
+    drawWave(waveCanvas.height - 20, 20, 180, '#22D3EE', 1.2, 0.10);
+    waveOffset += 1;
+    requestAnimationFrame(animateWaves);
+  }
+  animateWaves();
+  
+  // Baseflow method toggle
+  const bfm = document.getElementById('baseflowMethod');
+  if (bfm) {
+    bfm.addEventListener('change', (e) => {
+      document.getElementById('manualBaseGroup').style.display = e.target.value === 'manual' ? 'block' : 'none';
+    });
+  }
+});
+
+/* ═══ NAVIGATION ═══ */
+let currentPage = 'pageDashboard';
+function goToPage(pageId) {
+  const current = document.getElementById(currentPage);
+  const next = document.getElementById(pageId);
+  current.classList.remove('active');
+  current.classList.add('exit-left');
+  setTimeout(() => {
+    current.classList.remove('exit-left');
+    next.classList.add('active');
+    currentPage = pageId;
+    next.scrollTop = 0;
+  }, 500);
+}
+
+function handleCsvUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    document.getElementById('manualData').value = e.target.result;
+    document.getElementById('csvStatus').style.display = 'block';
+    document.getElementById('csvFileName').textContent = file.name;
+  };
+  reader.readAsText(file);
+}
+
+function loadDemoData() {
+  // Storm hydrograph: 30 hours
+  const demo = `0, 12
+1, 12.5
+2, 14
+3, 18
+4, 28
+5, 45
+6, 68
+7, 92
+8, 105
+9, 98
+10, 82
+11, 65
+12, 52
+13, 42
+14, 35
+15, 30
+16, 26
+17, 23
+18, 20
+19, 18
+20, 16
+21, 14.5
+22, 13.5
+23, 13
+24, 12.5
+25, 12.3
+26, 12.2
+27, 12.1
+28, 12
+29, 12
+30, 12`;
+  document.getElementById('manualData').value = demo;
+}
+
+/* ═══ PARSE DATA ═══ */
+function parseData() {
+  const text = document.getElementById('manualData').value.trim();
+  if (!text) {
+    alert('Please enter or upload data first.');
+    return null;
+  }
+  const lines = text.split('\n').filter(l => l.trim());
+  const data = [];
+  for (const line of lines) {
+    const parts = line.split(/[,\t]+/).map(p => p.trim());
+    if (parts.length < 2) continue;
+    const time = parseFloat(parts[0]);
+    const discharge = parseFloat(parts[1]);
+    if (isNaN(time) || isNaN(discharge)) continue;
+    data.push({ time, discharge });
+  }
+  data.sort((a, b) => a.time - b.time);
+  return data;
+}
+
+/* ═══ RUN ANALYSIS ═══ */
+let analysisData = null;
+const $ = id => document.getElementById(id);
+const num = (id, def) => { const v = parseFloat($(id).value); return isNaN(v) ? def : v; };
+const sum = a => a.reduce((x, v) => x + v, 0);
+
+function runAnalysis() {
+  const data = parseData();
+  if (!data || data.length < 5) { alert('Please provide at least 5 time steps of discharge data.'); return; }
+  const n = data.length, t = data.map(d => d.time), Q = data.map(d => d.discharge);
+  const area = num('catchmentArea', 50), D = num('rainDuration', 1), method = $('baseflowMethod').value;
+  const peakIdx = Q.indexOf(Math.max(...Q)), peak = data[peakIdx];
+  const trap = y => y.slice(0, -1).map((v, i) => (v + y[i + 1]) / 2 * (t[i + 1] - t[i]) * 3600); // m³ per interval
+
+  // Base flow separation
+  let baseflow, tEnd = t[n - 1];
+  if (method === 'straight') {
+    // Straight line: start of rise -> end of direct runoff, N = 0.83 A^0.2 (days, A in km²) after the peak
+    const given = parseFloat($('drEndTime').value);
+    const target = isNaN(given) ? peak.time + 0.83 * Math.pow(area, 0.2) * 24 : given;
+    let e = t.findIndex((x, i) => i > peakIdx && x >= target); if (e < 0) e = n - 1;
+    tEnd = t[e];
+    baseflow = Q.map((q, i) => i >= e ? q : Math.min(q, Q[0] + (Q[e] - Q[0]) * (t[i] - t[0]) / (tEnd - t[0])));
+  } else {
+    const c = method === 'constant' ? Q[0] : num('manualBaseflow', 10);
+    baseflow = Q.map(q => Math.min(q, c));
+  }
+  const drh = Q.map((q, i) => q - baseflow[i]);
+
+  // Volumes (trapezoid with actual Δt)
+  const ivDRH = trap(drh), drhVolume = sum(ivDRH), totalVolume = sum(trap(Q)), bfVolume = sum(trap(baseflow));
+  const drhDepth = drhVolume / (area * 1e6) * 1000;                 // mm = V / A
+  const peUser = parseFloat($('effectiveRainfall').value);
+  const Pe = isNaN(peUser) ? drhDepth : peUser;                     // effective rainfall = DRH depth
+  const totRain = parseFloat($('totalRain').value);
+  const runoffCoeff = totRain > 0 ? Pe / totRain : null;            // C = runoff depth / rainfall depth
+  const directShare = totalVolume > 0 ? drhVolume / totalVolume : 0;
+  const peMismatch = Math.abs(Pe - drhDepth) / (drhDepth || 1) > 0.05;
+
+  // Unit hydrograph + S-curve
+  const uh = drh.map(v => v / Pe);
+  const uhVolDepth = sum(trap(uh)) / (area * 1e6) * 1000;           // must be 1 mm
+  const uhPeak = Math.max(...uh), uhPeakTime = t[uh.indexOf(uhPeak)];
+  const dt = t[1] - t[0], uniform = t.every((x, i) => i === 0 || Math.abs(x - t[i - 1] - dt) < 1e-6);
+  const m = Math.round(D / dt);
+  let S = null;
+  if (uniform && m >= 1 && Math.abs(m * dt - D) < 1e-6) { S = []; uh.forEach((u, i) => S.push(u + (i >= m ? S[i - m] : 0))); }
+  const Qe = 0.2778 * area / D;                                     // equilibrium discharge, m³/s per mm
+
+  // Times
+  const timeToPeak = peak.time - t[0];
+  let last = n - 1; while (last > 0 && drh[last] < 1e-9) last--;
+  const timeBase = t[Math.min(last + 1, n - 1)] - t[0];
+  const catVolumes = [sum(ivDRH.slice(0, peakIdx)), sum(ivDRH.slice(peakIdx))];
+  const categories = ['Rising limb', 'Recession limb'];
+
+  analysisData = { data, baseflow, drh, uh, S, ivDRH, peak, peakIdx, timeToPeak, timeBase, uhPeak, uhPeakTime,
+    drhVolume, totalVolume, bfVolume, drhDepth, runoffCoeff, directShare, effRain: Pe, totRain, area, D, Qe,
+    uhVolDepth, tEnd, method, categories, catVolumes };
+  $('uhDur').textContent = D;
+
+  $('hydroVerdict').innerHTML = `
+    <div class="info-box success" style="font-size: 1rem; padding: 22px 24px;">
+      Hydrograph analyzed. <strong>Peak discharge: ${peak.discharge.toFixed(1)} m³/s</strong> at <strong>t = ${peak.time} hr</strong>.
+      Direct runoff depth (= effective rainfall): <strong>${drhDepth.toFixed(2)} mm</strong> over ${area} km².
+      ${runoffCoeff !== null ? `Runoff coefficient C = Pe/P = <strong>${runoffCoeff.toFixed(3)}</strong>.` : 'Enter total rainfall P to get the runoff coefficient.'}
+      ${peMismatch ? `<br><span style="color:#F59E0B">⚠ Your effective rainfall (${Pe} mm) differs from the DRH depth (${drhDepth.toFixed(2)} mm). The UH then integrates to ${uhVolDepth.toFixed(3)} mm, not 1 mm. Leave the field blank to use the DRH depth.</span>` : ''}
+    </div>`;
+
+  const card = (l, v, u, c = '') => `<div class="summary-card"><div class="summary-label">${l}</div><div class="summary-value ${c}">${v}</div><div class="summary-unit">${u}</div></div>`;
+  $('summary').innerHTML =
+    card('Peak Discharge', peak.discharge.toFixed(1), `m³/s at t = ${peak.time} hr`, 'warn') +
+    card('Time to Peak', timeToPeak.toFixed(1), 'hours from start of record') +
+    card('Time Base', timeBase.toFixed(1), 'hours (direct runoff)') +
+    card('Direct Runoff Depth', drhDepth.toFixed(2), 'mm', 'good') +
+    card('UH Peak', uhPeak.toFixed(4), `m³/s per mm (${D}-hr UH)`, 'purple') +
+    card('Runoff Coefficient', runoffCoeff !== null ? runoffCoeff.toFixed(3) : '—', 'C = Pe / P') +
+    card('Direct share of flow volume', (directShare * 100).toFixed(1) + '%', 'DRH volume / total volume');
+
+  $('formulaBox').innerHTML = `
+    <div class="formula-label">Base flow separation (straight line)</div>
+    From start of rise to end of direct runoff; N = 0.83·A<sup>0.2</sup> days after peak (A in km²) = ${(0.83 * Math.pow(area, 0.2)).toFixed(2)} days.
+    ${method === 'straight' ? `End of DR used: t = ${tEnd} hr.` : ''}<br>DRH = Total flow − Base flow<br><br>
+    <div class="formula-label">Volume and depth of direct runoff</div>
+    V<sub>DRH</sub> = Σ [(Q<sub>i</sub> + Q<sub>i+1</sub>)/2] × Δt = ${(drhVolume / 1e6).toFixed(4)} Mm³<br>
+    Pe = V<sub>DRH</sub> / A = <strong>${drhDepth.toFixed(3)} mm</strong><br><br>
+    <div class="formula-label">Unit hydrograph (${D}-hr)</div>
+    U(t) = DRH(t) / Pe &nbsp; → UH peak = <strong>${uhPeak.toFixed(4)} m³/s per mm</strong> at t = ${uhPeakTime} hr<br>
+    Check: depth under UH = ${uhVolDepth.toFixed(3)} mm (should be 1.000)<br><br>
+    <div class="formula-label">S-curve</div>
+    S(t) = Σ U(t − kD); equilibrium Q<sub>e</sub> = 0.2778·A/D = ${Qe.toFixed(3)} m³/s per mm ${S ? '' : '<br>(S-curve skipped: needs uniform Δt and D a multiple of Δt)'}<br><br>
+    <div class="formula-label">Runoff coefficient</div>
+    C = Pe / P ${runoffCoeff !== null ? `= ${Pe.toFixed(2)} / ${totRain} = <strong>${runoffCoeff.toFixed(3)}</strong>` : '(enter total rainfall P)'}`;
+
+  const tbody = document.querySelector('#dataTable tbody'); tbody.innerHTML = '';
+  data.forEach((d, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td style="color:#38BDF8;font-weight:600">${d.time}</td><td>${d.discharge.toFixed(2)}</td>
+      <td style="color:#94A3B8">${baseflow[i].toFixed(2)}</td><td style="color:#22D3EE;font-weight:600">${drh[i].toFixed(2)}</td>
+      <td style="color:#A78BFA">${uh[i].toFixed(4)}</td><td style="color:#F59E0B">${S ? S[i].toFixed(4) : '—'}</td>`;
+    tbody.appendChild(tr);
+  });
+  goToPage('pageResults');
+  setTimeout(renderAll, 500);
+}
+
+/* ═══ CHART ENGINE ═══ */
+const THEMES = {
+  dark:  { bg: '#0B1424', fg: '#E2E8F0', mut: '#94A3B8', grid: 'rgba(148,163,184,0.18)', axis: 'rgba(148,163,184,0.75)', title: '#38BDF8' },
+  light: { bg: '#FFFFFF', fg: '#111827', mut: '#374151', grid: '#E5E7EB', axis: '#111827', title: '#111827' }
+};
+const charts = {};
+const FONT = (px, b) => `${b ? 'bold ' : ''}${px}px "Times New Roman", serif`;
+function niceTicks(max, n = 6) {
+  const raw = (max || 1) / n, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p;
+  const st = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p, out = [0];
+  while (out[out.length - 1] < max - 1e-9) out.push(+(out[out.length - 1] + st).toFixed(10));
+  return out;
+}
+function frame(cv, T, o) {
+  const c = cv.getContext('2d'), W = cv.width, H = cv.height, L = 95, R = 40, TP = 70, B = 85;
+  c.clearRect(0, 0, W, H); c.fillStyle = T.bg; c.fillRect(0, 0, W, H);
+  const yt = niceTicks(o.ymax), Y = yt[yt.length - 1], xr = (o.xmax - o.xmin) || 1;
+  const sx = v => L + (v - o.xmin) / xr * (W - L - R), sy = v => H - B - v / Y * (H - B - TP);
+  c.font = FONT(14); c.lineWidth = 1; c.textAlign = 'right'; c.textBaseline = 'middle';
+  yt.forEach(v => { c.strokeStyle = T.grid; c.beginPath(); c.moveTo(L, sy(v)); c.lineTo(W - R, sy(v)); c.stroke(); c.fillStyle = T.mut; c.fillText(String(+v.toFixed(4)), L - 10, sy(v)); });
+  if (!o.noX) {
+    c.textAlign = 'center'; c.textBaseline = 'top';
+    niceTicks(xr, 10).forEach(v => { const x = o.xmin + v; if (x > o.xmax + 1e-9) return;
+      c.strokeStyle = T.grid; c.beginPath(); c.moveTo(sx(x), TP); c.lineTo(sx(x), H - B); c.stroke();
+      c.fillStyle = T.mut; c.fillText(String(+x.toFixed(2)), sx(x), H - B + 8); });
+  }
+  c.strokeStyle = T.axis; c.lineWidth = 2; c.beginPath(); c.moveTo(L, TP - 10); c.lineTo(L, H - B); c.lineTo(W - R, H - B); c.stroke();
+  c.textBaseline = 'alphabetic'; c.textAlign = 'center';
+  c.fillStyle = T.title; c.font = FONT(22, 1); c.fillText(o.title, W / 2, 36);
+  c.fillStyle = T.fg; c.font = FONT(16); c.fillText(o.xl || '', (L + W - R) / 2, H - 22);
+  c.save(); c.translate(26, (TP + H - B) / 2); c.rotate(-Math.PI / 2); c.fillText(o.yl, 0, 0); c.restore();
+  return { c, W, H, L, R, TP, B, sx, sy, T };
+}
+function legend(f, items) {
+  const c = f.c; let y = f.TP + 24; const x = f.L + 24;
+  c.font = FONT(15); c.textAlign = 'left'; c.textBaseline = 'middle';
+  items.forEach(it => {
+    if (it.box) { c.fillStyle = it.color + '55'; c.fillRect(x, y - 7, 30, 14); }
+    else { c.strokeStyle = it.color; c.lineWidth = 3; c.setLineDash(it.dash || []); c.beginPath(); c.moveTo(x, y); c.lineTo(x + 30, y); c.stroke(); c.setLineDash([]); }
+    c.fillStyle = f.T.fg; c.fillText(it.label, x + 40, y); y += 26;
+  });
+}
+function lineChart(id, o) {
+  const cv = $(id), xs = o.series.flatMap(s => s.x), ys = o.series.flatMap(s => s.y).concat((o.hlines || []).map(h => h.y));
+  const draw = T => {
+    const f = frame(cv, T, { title: o.title, xl: o.xl, yl: o.yl, xmin: Math.min(...xs), xmax: Math.max(...xs), ymax: Math.max(...ys) * 1.12 || 1 }), c = f.c;
+    const leg = [];
+    o.series.forEach(s => {
+      if (s.fill) {
+        c.beginPath(); s.x.forEach((x, i) => i ? c.lineTo(f.sx(x), f.sy(s.y[i])) : c.moveTo(f.sx(x), f.sy(s.y[i])));
+        for (let i = s.x.length - 1; i >= 0; i--) c.lineTo(f.sx(s.x[i]), f.sy(s.fillTo ? s.fillTo[i] : 0));
+        c.closePath(); c.fillStyle = s.color + '40'; c.fill();
+      }
+      c.beginPath(); s.x.forEach((x, i) => i ? c.lineTo(f.sx(x), f.sy(s.y[i])) : c.moveTo(f.sx(x), f.sy(s.y[i])));
+      c.strokeStyle = s.color; c.lineWidth = s.w || 3; c.setLineDash(s.dash || []); c.stroke(); c.setLineDash([]);
+      if (s.dots) s.x.forEach((x, i) => { c.beginPath(); c.arc(f.sx(x), f.sy(s.y[i]), 3.5, 0, 7); c.fillStyle = s.color; c.fill(); });
+      leg.push({ label: s.label, color: s.color, dash: s.dash });
+      if (s.fillLabel) leg.push({ label: s.fillLabel, color: s.color, box: 1 });
+    });
+    (o.hlines || []).forEach(h => { c.strokeStyle = h.color; c.lineWidth = 2; c.setLineDash([4, 6]); c.beginPath(); c.moveTo(f.L, f.sy(h.y)); c.lineTo(f.W - f.R, f.sy(h.y)); c.stroke(); c.setLineDash([]);
+      leg.push({ label: h.label, color: h.color, dash: [4, 6] }); });
+    (o.marks || []).forEach(k => { c.beginPath(); c.arc(f.sx(k.x), f.sy(k.y), 8, 0, 7); c.fillStyle = '#F59E0B'; c.fill(); c.strokeStyle = T.bg; c.lineWidth = 2; c.stroke();
+      c.fillStyle = T.fg; c.font = FONT(14, 1); c.textAlign = 'center'; c.textBaseline = 'alphabetic'; c.fillText(k.text, Math.min(Math.max(f.sx(k.x), f.L + 110), f.W - f.R - 110), f.sy(k.y) - 16); });
+    legend(f, leg);
+  };
+  charts[id] = { draw, csv: o.csv }; draw(THEMES.dark);
+}
+function barChart(id, o) {
+  const cv = $(id), n = o.values.length;
+  const draw = T => {
+    const f = frame(cv, T, { title: o.title, xl: o.xl, yl: o.yl, xmin: 0, xmax: n, ymax: Math.max(...o.values) * 1.2 || 1, noX: 1 }), c = f.c;
+    const slot = (f.W - f.L - f.R) / n, bw = slot * 0.7, step = Math.ceil(n / 15);
+    o.values.forEach((v, i) => {
+      const x = f.L + i * slot + (slot - bw) / 2, col = Array.isArray(o.colors) ? o.colors[i] : o.colors;
+      c.fillStyle = col; c.fillRect(x, f.sy(v), bw, f.sy(0) - f.sy(v));
+      c.textAlign = 'center'; c.textBaseline = 'top'; c.fillStyle = T.mut; c.font = FONT(13);
+      if (i % step === 0) c.fillText(o.labels[i], x + bw / 2, f.H - f.B + 8);
+      if (n <= 12) { c.fillStyle = T.fg; c.font = FONT(15, 1); c.textBaseline = 'alphabetic'; c.fillText(o.fmt(v), x + bw / 2, f.sy(v) - 8); }
+    });
+  };
+  charts[id] = { draw, csv: o.csv }; draw(THEMES.dark);
+}
+function pieChart(id, o) {
+  const cv = $(id), tot = sum(o.slices.map(s => s.value));
+  const draw = T => {
+    const c = cv.getContext('2d'), W = cv.width, H = cv.height, cx = W * 0.32, cy = H / 2 + 20, r = Math.min(W, H) * 0.32;
+    c.clearRect(0, 0, W, H); c.fillStyle = T.bg; c.fillRect(0, 0, W, H);
+    c.fillStyle = T.title; c.font = FONT(22, 1); c.textAlign = 'center'; c.fillText(o.title, W / 2, 36);
+    let a0 = -Math.PI / 2;
+    o.slices.forEach(s => {
+      const a = s.value / tot * Math.PI * 2;
+      c.beginPath(); c.moveTo(cx, cy); c.arc(cx, cy, r, a0, a0 + a); c.closePath(); c.fillStyle = s.color; c.fill(); c.strokeStyle = T.bg; c.lineWidth = 3; c.stroke();
+      c.fillStyle = '#FFFFFF'; c.font = FONT(20, 1); c.textBaseline = 'middle'; c.fillText((s.value / tot * 100).toFixed(1) + '%', cx + Math.cos(a0 + a / 2) * r * 0.62, cy + Math.sin(a0 + a / 2) * r * 0.62);
+      a0 += a;
+    });
+    c.textAlign = 'left';
+    o.slices.forEach((s, i) => { const y = H / 2 - 20 + i * 70; c.fillStyle = s.color; c.fillRect(W * 0.62, y - 12, 26, 26);
+      c.fillStyle = T.fg; c.font = FONT(18, 1); c.fillText(s.label, W * 0.62 + 40, y - 4); c.fillStyle = T.mut; c.font = FONT(15); c.fillText(`${(s.value / 1e6).toFixed(4)} Mm³`, W * 0.62 + 40, y + 18); });
+  };
+  charts[id] = { draw, csv: o.csv }; draw(THEMES.dark);
+}
+
+function renderAll() {
+  const a = analysisData, t = a.data.map(d => d.time), Q = a.data.map(d => d.discharge);
+  const csv = (h, rows) => h + '\n' + rows.map(r => r.join(',')).join('\n');
+  const f4 = v => v.toFixed(4);
+  const BLUE = '#0EA5E9', GREEN = '#10B981', PURPLE = '#8B5CF6', AMBER = '#F59E0B';
+  lineChart('mainHydrographCanvas', { title: 'Storm Hydrograph with Base Flow Separation', xl: 'Time (hr)', yl: 'Discharge (m³/s)',
+    series: [{ x: t, y: Q, color: BLUE, fill: 1, fillTo: a.baseflow, fillLabel: 'Direct runoff', label: 'Total flow', dots: 1 },
+             { x: t, y: a.baseflow, color: GREEN, dash: [9, 6], w: 2.5, label: 'Base flow' }],
+    marks: [{ x: a.peak.time, y: a.peak.discharge, text: `Peak ${a.peak.discharge.toFixed(1)} m³/s at t = ${a.peak.time} hr` }],
+    csv: csv('time_hr,total_flow_m3s,base_flow_m3s,direct_runoff_m3s', t.map((x, i) => [x, Q[i], f4(a.baseflow[i]), f4(a.drh[i])])) });
+  lineChart('drhCanvas', { title: 'Direct Runoff Hydrograph (DRH)', xl: 'Time (hr)', yl: 'Direct runoff (m³/s)',
+    series: [{ x: t, y: a.drh, color: PURPLE, fill: 1, label: 'DRH', dots: 1 }],
+    marks: [{ x: a.peak.time, y: a.drh[a.peakIdx], text: `Peak ${a.drh[a.peakIdx].toFixed(1)} m³/s` }],
+    csv: csv('time_hr,direct_runoff_m3s', t.map((x, i) => [x, f4(a.drh[i])])) });
+  lineChart('uhCanvas', { title: `${a.D}-hour Unit Hydrograph`, xl: 'Time (hr)', yl: 'Ordinate (m³/s per mm)',
+    series: [{ x: t, y: a.uh, color: AMBER, fill: 1, label: `${a.D}-hr UH`, dots: 1 }],
+    marks: [{ x: a.uhPeakTime, y: a.uhPeak, text: `Peak ${a.uhPeak.toFixed(4)} at t = ${a.uhPeakTime} hr` }],
+    csv: csv('time_hr,unit_hydrograph_m3s_per_mm', t.map((x, i) => [x, f4(a.uh[i])])) });
+  const showS = !!a.S; $('sTitle').style.display = $('sWrap').style.display = showS ? '' : 'none';
+  if (showS) lineChart('sCanvas', { title: `S-Curve from ${a.D}-hour UH`, xl: 'Time (hr)', yl: 'S ordinate (m³/s per mm)',
+    series: [{ x: t, y: a.S, color: BLUE, label: 'S-curve', dots: 1 }],
+    hlines: [{ y: a.Qe, color: GREEN, label: `Equilibrium Qe = ${a.Qe.toFixed(3)}` }],
+    csv: csv('time_hr,s_curve_m3s_per_mm', t.map((x, i) => [x, f4(a.S[i])])) });
+  const tot = a.drhVolume + a.bfVolume;
+  pieChart('pieCanvas', { title: 'Runoff Components — Direct Runoff vs Base Flow',
+    slices: [{ label: 'Direct runoff', value: a.drhVolume, color: PURPLE }, { label: 'Base flow', value: a.bfVolume, color: GREEN }],
+    csv: csv('component,volume_m3,percent', [['direct_runoff', a.drhVolume.toFixed(1), (a.drhVolume / tot * 100).toFixed(2)], ['base_flow', a.bfVolume.toFixed(1), (a.bfVolume / tot * 100).toFixed(2)]]) });
+  barChart('volumeBarCanvas', { title: 'Direct Runoff Volume per Time Interval', xl: 'Interval start (hr)', yl: 'Volume (10³ m³)', colors: BLUE,
+    labels: t.slice(0, -1), values: a.ivDRH.map(v => v / 1e3), fmt: v => v.toFixed(0),
+    csv: csv('interval_start_hr,interval_end_hr,drh_volume_m3', a.ivDRH.map((v, i) => [t[i], t[i + 1], v.toFixed(1)])) });
+  const cp = a.catVolumes.map(v => v / a.drhVolume * 100);
+  barChart('distributionCanvas', { title: 'Direct Runoff Distribution — Rising vs Recession Limb', xl: 'Hydrograph limb (split at peak)', yl: 'Share of direct runoff (%)',
+    colors: [BLUE, AMBER], labels: a.categories, values: cp, fmt: v => v.toFixed(1) + '%',
+    csv: csv('limb,volume_m3,percent', a.categories.map((c, i) => [c, a.catVolumes[i].toFixed(1), cp[i].toFixed(2)])) });
+  injectTools();
+}
+
+/* ═══ DOWNLOADS ═══ */
+function saveBlob(blob, name) { const el = document.createElement('a'); el.href = URL.createObjectURL(blob); el.download = name; el.click(); setTimeout(() => URL.revokeObjectURL(el.href), 1500); }
+function dlChart(id, theme) { const ch = charts[id], cv = $(id); ch.draw(THEMES[theme]); cv.toBlob(b => { saveBlob(b, `${id.replace('Canvas', '')}_${theme}.png`); ch.draw(THEMES.dark); }); }
+function dlChartCSV(id) { saveBlob(new Blob(['\uFEFF' + charts[id].csv], { type: 'text/csv' }), `${id.replace('Canvas', '')}_data.csv`); }
+function dlAll() { Object.keys(charts).filter(id => $(id).offsetParent !== null).forEach((id, i) => setTimeout(() => dlChart(id, 'light'), i * 700)); }
+function injectTools() {
+  Object.keys(charts).forEach(id => {
+    const w = $(id).parentElement; if (w.nextElementSibling && w.nextElementSibling.classList.contains('chart-tools')) return;
+    const d = document.createElement('div'); d.className = 'chart-tools'; d.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin:-10px 0 20px';
+    [['⬇ PNG (dark)', () => dlChart(id, 'dark')], ['⬇ PNG (white, for report)', () => dlChart(id, 'light')], ['⬇ Chart data (CSV)', () => dlChartCSV(id)]].forEach(([l, fn]) => {
+      const b = document.createElement('button'); b.className = 'liquid-btn'; b.style.cssText = 'padding:8px 16px;font-size:0.78rem'; b.textContent = l; b.onclick = fn; d.appendChild(b); });
+    w.insertAdjacentElement('afterend', d);
+  });
+}
+function summaryRows(a) {
+  const mm = { straight: 'Straight line (N = 0.83 A^0.2 days after peak)', constant: 'Constant base flow', manual: 'Manual base flow' }[a.method];
+  return [['catchment_area', a.area, 'km2'], ['base_flow_method', mm, ''], ['end_of_direct_runoff', a.tEnd, 'hr'],
+    ['peak_discharge', a.peak.discharge.toFixed(3), 'm3/s'], ['time_of_peak', a.peak.time, 'hr'], ['time_to_peak_from_record_start', a.timeToPeak.toFixed(3), 'hr'],
+    ['time_base_of_DRH', a.timeBase.toFixed(3), 'hr'], ['total_flow_volume', a.totalVolume.toFixed(1), 'm3'], ['base_flow_volume', a.bfVolume.toFixed(1), 'm3'],
+    ['direct_runoff_volume', a.drhVolume.toFixed(1), 'm3'], ['direct_runoff_depth', a.drhDepth.toFixed(4), 'mm'], ['effective_rainfall_used', a.effRain.toFixed(4), 'mm'],
+    ['total_rainfall_P', a.totRain > 0 ? a.totRain : 'not provided', 'mm'], ['runoff_coefficient_Pe_over_P', a.runoffCoeff !== null ? a.runoffCoeff.toFixed(4) : 'not computed', ''],
+    ['direct_share_of_flow_volume', a.directShare.toFixed(4), ''], ['UH_duration_D', a.D, 'hr'], ['UH_peak', a.uhPeak.toFixed(5), 'm3/s per mm'],
+    ['UH_peak_time', a.uhPeakTime, 'hr'], ['UH_depth_check', a.uhVolDepth.toFixed(4), 'mm (should be 1)'], ['S_curve_equilibrium_Qe', a.Qe.toFixed(4), 'm3/s per mm']];
+}
+function saveSummaryCSV() {
+  if (!analysisData) return;
+  saveBlob(new Blob(['\uFEFF' + 'parameter,value,unit\n' + summaryRows(analysisData).map(r => r.map(v => `"${v}"`).join(',')).join('\n')], { type: 'text/csv' }), `hydrograph_summary_${Date.now()}.csv`);
+}
+function saveCSV() {
+  if (!analysisData) return; const a = analysisData;
+  let out = 'time_hr,total_flow_m3s,base_flow_m3s,direct_runoff_m3s,unit_hydrograph_m3s_per_mm,s_curve_m3s_per_mm,drh_interval_volume_m3\n';
+  a.data.forEach((d, i) => { out += [d.time, d.discharge, a.baseflow[i].toFixed(4), a.drh[i].toFixed(4), a.uh[i].toFixed(5), a.S ? a.S[i].toFixed(5) : '', i < a.ivDRH.length ? a.ivDRH[i].toFixed(1) : ''].join(',') + '\n'; });
+  saveBlob(new Blob(['\uFEFF' + out], { type: 'text/csv' }), `hydrograph_data_${Date.now()}.csv`);
+}
+function saveResults() {
+  if (!analysisData) return; const a = analysisData;
+  let out = 'HYDROGRAPH ANALYSIS REPORT — Unit Hydrograph Derivation\nGenerated: ' + new Date().toLocaleString() + '\n\n';
+  summaryRows(a).forEach(r => out += `${r[0]}: ${r[1]} ${r[2]}\n`);
+  out += '\ntime | total | base | DRH | UH | S\n';
+  a.data.forEach((d, i) => out += `${d.time} | ${d.discharge.toFixed(2)} | ${a.baseflow[i].toFixed(2)} | ${a.drh[i].toFixed(2)} | ${a.uh[i].toFixed(4)} | ${a.S ? a.S[i].toFixed(4) : '-'}\n`);
+  out += '\nDeveloped by Junaid Ali · Civil Engineering Research\n';
+  saveBlob(new Blob([out], { type: 'text/plain' }), `hydrograph_report_${Date.now()}.txt`);
+}
+</script>
+
+</body>
+</html>

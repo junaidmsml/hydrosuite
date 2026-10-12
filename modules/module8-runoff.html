@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Runoff Estimation — Precipitation Analyzer</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Times New Roman',Times,serif}
+@media (hover:hover) and (pointer:fine){*{cursor:none}}
+body{background:#0A1628;min-height:100vh;overflow-x:hidden;color:#E2E8F0}
+option{background:#0A1628;color:#E2E8F0}
+.cursor-dot{position:fixed;width:8px;height:8px;background:#38BDF8;border-radius:50%;pointer-events:none;z-index:9999;box-shadow:0 0 20px #38BDF8,0 0 40px #38BDF8;transform:translate(-50%,-50%)}
+.cursor-ring{position:fixed;width:40px;height:40px;border:2px solid rgba(56,189,248,.5);border-radius:50%;pointer-events:none;z-index:9998;transform:translate(-50%,-50%);transition:width .3s,height .3s,background .3s,border-color .3s}
+.cursor-ring.hover{width:70px;height:70px;border-color:rgba(34,211,238,.9);background:rgba(34,211,238,.12)}
+.cursor-ring.click{width:100px;height:100px;border-color:#22D3EE;background:rgba(34,211,238,.2)}
+canvas.fx{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none}
+#rainCanvas{z-index:1}#waveCanvas{z-index:2}#trailCanvas{z-index:50}
+.bg{position:fixed;inset:0;pointer-events:none;z-index:1;background:radial-gradient(circle at 20% 30%,rgba(56,189,248,.08),transparent 50%),radial-gradient(circle at 80% 70%,rgba(14,165,233,.06),transparent 50%)}
+.grid-overlay{position:fixed;inset:0;pointer-events:none;z-index:1;background-image:linear-gradient(rgba(56,189,248,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(56,189,248,.03) 1px,transparent 1px);background-size:80px 80px}
+.page{position:fixed;inset:0;overflow-y:auto;z-index:10;opacity:0;visibility:hidden;transform:translateX(100%) scale(.95);transition:all .7s cubic-bezier(.23,1,.32,1);padding:30px 20px}
+.page.active{opacity:1;visibility:visible;transform:none}
+.page.exit-left{transform:translateX(-100%) scale(.95);opacity:0}
+.container{max-width:1300px;margin:0 auto}
+.page-header{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:30px;padding:20px 25px;background:rgba(15,23,42,.7);backdrop-filter:blur(20px);border-radius:18px;border:1px solid rgba(56,189,248,.15)}
+.page-header h2{font-size:1.4rem;color:#38BDF8;letter-spacing:1px}
+.back-btn{padding:10px 22px;border:1px solid rgba(56,189,248,.3);border-radius:10px;background:rgba(56,189,248,.08);color:#38BDF8;font-size:.9rem;font-weight:600;transition:all .3s}
+.back-btn:hover{background:rgba(56,189,248,.2);transform:translateY(-3px)}
+.hero{text-align:center;padding:50px 20px 30px}
+.badge{display:inline-block;padding:8px 22px;border-radius:30px;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.3);font-size:.75rem;letter-spacing:4px;text-transform:uppercase;color:#38BDF8;margin-bottom:24px;animation:fl 3s ease-in-out infinite}
+@keyframes fl{50%{transform:translateY(-6px)}}
+.hero h1{font-size:3.5rem;font-weight:900;background:linear-gradient(90deg,#38BDF8,#0EA5E9,#22D3EE,#38BDF8);background-size:300% auto;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:sh 5s linear infinite;margin-bottom:12px;line-height:1.1}
+@keyframes sh{to{background-position:300% center}}
+.author{font-size:1.15rem;color:#38BDF8;font-weight:700;letter-spacing:3px;margin-bottom:16px;animation:ng 3s ease-in-out infinite}
+@keyframes ng{0%,100%{text-shadow:0 0 15px rgba(56,189,248,.5)}50%{text-shadow:0 0 35px rgba(56,189,248,.9)}}
+.subtitle{color:#94A3B8;letter-spacing:2px;margin-bottom:12px;font-style:italic}
+.desc{color:#7C8CA3;max-width:720px;margin:0 auto;line-height:1.7}
+.section-title{font-size:1.4rem;margin:40px 0 20px;padding-bottom:12px;border-bottom:1px solid rgba(56,189,248,.15);display:flex;align-items:center}
+.section-title::before{content:'';width:5px;height:24px;background:linear-gradient(180deg,#38BDF8,#22D3EE);margin-right:14px;border-radius:3px}
+.features-grid,.summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px;margin-bottom:30px}
+.feature-card,.summary-card,.input-panel{background:rgba(15,23,42,.7);backdrop-filter:blur(20px);border-radius:14px;padding:24px;border:1px solid rgba(56,189,248,.15);transition:all .4s}
+.feature-card:hover,.summary-card:hover{transform:translateY(-6px);box-shadow:0 20px 40px rgba(0,0,0,.4),0 0 30px rgba(56,189,248,.15);border-color:rgba(56,189,248,.4)}
+.feature-card h4{color:#38BDF8;margin-bottom:10px;font-size:1.05rem}
+.feature-card p{font-size:.92rem;color:#94A3B8;line-height:1.6}
+.input-panel{margin-bottom:24px}
+.input-panel h3{font-size:1rem;color:#38BDF8;margin-bottom:20px;letter-spacing:1.5px;text-transform:uppercase}
+.input-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:20px}
+label{display:block;font-size:.78rem;color:#94A3B8;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;font-weight:600}
+input,select,textarea{width:100%;padding:12px 16px;border-radius:10px;border:1px solid rgba(56,189,248,.2);background:rgba(0,0,0,.4);color:#E2E8F0;font-size:.95rem;outline:none;transition:all .3s}
+input:focus,select:focus,textarea:focus{border-color:#38BDF8;box-shadow:0 0 20px rgba(56,189,248,.3)}
+textarea{min-height:180px;resize:vertical;font-family:'Courier New',monospace;line-height:1.7}
+.upload-box{border:2px dashed rgba(56,189,248,.4);border-radius:14px;padding:36px 20px;text-align:center;background:rgba(56,189,248,.03);transition:all .3s}
+.upload-box:hover{border-color:#38BDF8;background:rgba(56,189,248,.08)}
+.upload-box p{color:#94A3B8;margin-top:8px}
+.station-table{width:100%;border-collapse:collapse;background:rgba(0,0,0,.3);min-width:640px}
+.station-table th{background:rgba(56,189,248,.15);color:#38BDF8;padding:12px;text-align:left;font-size:.82rem;text-transform:uppercase;letter-spacing:1px}
+.station-table td{padding:10px 12px;border-bottom:1px solid rgba(56,189,248,.08);font-size:.92rem}
+.summary-card{text-align:center;padding:20px}
+.summary-label{font-size:.72rem;color:#94A3B8;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
+.summary-value{font-size:1.6rem;font-weight:800;color:#38BDF8;font-family:'Courier New',monospace}
+.summary-value.good{color:#10B981}.summary-value.bad{color:#F59E0B}
+.summary-unit{font-size:.75rem;color:#7C8CA3;margin-top:4px}
+.canvas-wrapper{background:rgba(5,10,20,.8);border-radius:16px;padding:16px;border:1px solid rgba(56,189,248,.2);margin-bottom:24px}
+canvas.chart-canvas{width:100%;height:auto;border-radius:10px;display:block}
+.formula-box{background:rgba(34,211,238,.05);border-left:4px solid #22D3EE;border-radius:10px;padding:20px;margin-bottom:24px;font-family:'Courier New',monospace;color:#38BDF8;line-height:1.8}
+.formula-label{font-family:'Times New Roman',serif;color:#94A3B8;font-size:.85rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+.info-box{background:rgba(34,211,238,.08);border-left:4px solid #22D3EE;border-radius:10px;padding:16px 20px;margin-bottom:20px;color:#CBD5E1;line-height:1.7}
+.info-box strong{color:#38BDF8}
+.info-box.warning{background:rgba(245,158,11,.08);border-left-color:#F59E0B}.info-box.warning strong{color:#F59E0B}
+.info-box.success{background:rgba(16,185,129,.08);border-left-color:#10B981}.info-box.success strong{color:#10B981}
+.liquid-btn{position:relative;display:inline-block;margin:5px;padding:14px 36px;border:none;border-radius:50px;background:linear-gradient(135deg,#38BDF8,#0EA5E9,#22D3EE);background-size:300% 300%;color:#0A1628;font-size:.9rem;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;transition:all .4s cubic-bezier(.23,1,.32,1);box-shadow:0 10px 30px rgba(56,189,248,.3),inset 0 2px 8px rgba(255,255,255,.3);animation:lf 4s ease infinite}
+@keyframes lf{50%{background-position:100% 50%}}
+.liquid-btn:hover{transform:translateY(-5px) scale(1.05);box-shadow:0 20px 50px rgba(56,189,248,.5)}
+.liquid-btn.red{background:linear-gradient(135deg,#EF4444,#DC2626);color:#fff}
+.hint{font-size:.75rem;color:#7C8CA3;margin-top:6px}.dlbtn{margin-left:auto;padding:6px 16px;font-size:.8rem}.small{padding:10px 24px;font-size:.82rem}
+.footer{text-align:center;padding:40px 20px 30px;color:#64748B;letter-spacing:1px;font-style:italic;border-top:1px solid rgba(56,189,248,.1);margin-top:50px}
+.footer span{color:#38BDF8;font-weight:600}
+#toast{position:fixed;left:50%;bottom:30px;transform:translate(-50%,100px);background:#0C4A7A;color:#fff;padding:12px 24px;border-radius:30px;z-index:10000;border:1px solid #38BDF8;transition:transform .4s}
+#toast.show{transform:translate(-50%,0)}
+::-webkit-scrollbar{width:8px}::-webkit-scrollbar-track{background:#0A1628}::-webkit-scrollbar-thumb{background:linear-gradient(180deg,#38BDF8,#22D3EE);border-radius:10px}
+@media (max-width:700px){.hero h1{font-size:2.2rem}}
+</style>
+</head>
+<body>
+<div class="cursor-dot" id="cursorDot"></div><div class="cursor-ring" id="cursorRing"></div>
+<canvas id="rainCanvas" class="fx"></canvas><canvas id="waveCanvas" class="fx"></canvas><canvas id="trailCanvas" class="fx"></canvas>
+<div class="bg"></div><div class="grid-overlay"></div><div id="toast"></div>
+
+<div class="page active" id="pageDashboard"><div class="container">
+  <div class="page-header"><h2>Runoff Estimation</h2><button class="back-btn" onclick="location.href='index.html'">← Back</button></div>
+  <div class="hero">
+    <div class="badge">Module 8 — SCS-CN & Rational Method</div>
+    <h1>Runoff Estimation</h1>
+    <div class="author">by Junaid Ali</div>
+    <p class="subtitle">SCS Curve Number & Rational Method</p>
+    <p class="desc">Convert storm rainfall into direct runoff with the SCS Curve Number method (with antecedent moisture), check it against observed runoff, and estimate a peak flow with the Rational Method.</p>
+  </div>
+  <div class="section-title">What This Module Does</div>
+  <div class="features-grid">
+    <div class="feature-card"><h4>SCS Curve Number</h4><p>Q = (P − Ia)² / (P − Ia + S) for each storm, with AMC I, II or III and an adjustable Ia/S ratio.</p></div>
+    <div class="feature-card"><h4>Rational Method</h4><p>Qp = C·i·A / 3.6 for small catchments, plus a peak for every storm from its depth and duration.</p></div>
+    <div class="feature-card"><h4>Validation</h4><p>Add observed runoff to get NSE, RMSE, bias and a least-squares best-fit CN.</p></div>
+    <div class="feature-card"><h4>Six Charts</h4><p>Event bars, scatter, rainfall partition, runoff classes, cumulative volumes and CN curves for all three AMC levels.</p></div>
+  </div>
+  <div style="text-align:center;margin-top:30px"><button class="liquid-btn" onclick="goToPage('pageInput')">Start Estimation →</button></div>
+  <div class="footer">Developed by <span>Junaid Ali</span> · Civil Engineering Research</div>
+</div></div>
+
+<div class="page" id="pageInput"><div class="container">
+  <div class="page-header"><h2>Runoff Estimation — Input</h2><button class="back-btn" onclick="goToPage('pageDashboard')">← Back</button></div>
+  <div class="info-box"><strong>Data needed:</strong> one row per <strong>storm event</strong>: <strong>label, rainfall_mm</strong> and optionally <strong>observed_runoff_mm</strong>. The label can be a year (for example the annual maximum daily rainfall) or a date. The SCS-CN method works on single storms, so do <strong>not</strong> enter annual rainfall totals.</div>
+  <div class="input-panel"><h3>Option 1: Upload CSV</h3>
+    <div class="upload-box" onclick="$('csvFile').click()"><div style="font-size:2.5rem">📁</div><p>Click to upload CSV file</p><p style="font-size:.8rem">Columns: label, rainfall_mm [, observed_runoff_mm]</p>
+    <input type="file" id="csvFile" accept=".csv,.txt" style="display:none" onchange="handleCsv(event)"></div>
+    <div id="csvStatus" style="display:none;margin-top:15px;padding:12px;background:rgba(34,211,238,.1);border-left:3px solid #22D3EE;border-radius:8px;color:#22D3EE">✅ CSV loaded: <span id="csvFileName"></span></div>
+  </div>
+  <div class="input-panel"><h3>Option 2: Manual Entry</h3>
+    <textarea id="manualData" placeholder="2010, 85&#10;2011, 120, 38&#10;2012, 64"></textarea>
+    <div style="margin-top:16px"><button class="liquid-btn small" onclick="demo()">Load Demo Data</button><button class="liquid-btn small red" onclick="$('manualData').value=''">Clear</button></div>
+  </div>
+  <div class="input-panel"><h3>Catchment Parameters</h3>
+    <div class="input-row">
+      <div><label>Curve Number CN (for AMC II)</label><input type="number" id="curveNumber" value="75" min="30" max="100" step="1"><p class="hint">Tabulated CN values assume average wetness (AMC II).</p></div>
+      <div><label>Antecedent Moisture (AMC)</label><select id="amc"><option value="II" selected>II (average)</option><option value="I">I (dry)</option><option value="III">III (wet)</option></select></div>
+      <div><label>Initial Abstraction Ratio (λ = Ia/S)</label><input type="number" id="lambda" value="0.2" step="0.05" min="0" max="0.5"><p class="hint">0.2 is the standard. CN tables are calibrated for 0.2, so use a CN fitted for λ if you change it.</p></div>
+      <div><label>Catchment Area (km²)</label><input type="number" id="catchmentArea" value="2" step="0.1" min="0"></div>
+      <div><label>Runoff Coefficient C (Rational)</label><input type="number" id="runoffCoeff" value="0.45" step="0.05" min="0" max="1"><p class="hint">0.05–0.3 pervious, 0.3–0.7 mixed, 0.7–0.95 impervious.</p></div>
+      <div><label>Design Intensity i (mm/hr)</label><input type="number" id="intensity" value="50" step="1" min="0"><p class="hint">Read from an IDF curve at the time of concentration.</p></div>
+      <div><label>Storm Duration = Time of Concentration (min)</label><input type="number" id="stormDuration" value="60" step="5" min="1"></div>
+    </div>
+  </div>
+  <div style="text-align:center;margin-top:30px"><button class="liquid-btn" onclick="runAnalysis()">Run Estimation →</button></div>
+</div></div>
+
+<div class="page" id="pageResults"><div class="container">
+  <div class="page-header"><h2>Runoff Estimation — Results</h2><button class="back-btn" onclick="goToPage('pageInput')">← Back</button></div>
+  <div id="verdict"></div><div class="summary-grid" id="summary"></div>
+  <div class="section-title">Rainfall vs Runoff per Event<button class="back-btn dlbtn" onclick="dlChart('compareCanvas','rainfall_vs_runoff')">⬇ PNG</button></div>
+  <div class="canvas-wrapper"><canvas id="compareCanvas" class="chart-canvas" width="1200" height="540"></canvas></div>
+  <div class="section-title"><span id="scatterTitle">Scatter</span><button class="back-btn dlbtn" onclick="dlChart('scatterCanvas','scatter')">⬇ PNG</button></div>
+  <div class="canvas-wrapper"><canvas id="scatterCanvas" class="chart-canvas" width="1100" height="600"></canvas></div>
+  <div class="section-title">Rainfall Partition<button class="back-btn dlbtn" onclick="dlChart('pieCanvas','rainfall_partition')">⬇ PNG</button></div>
+  <div class="canvas-wrapper"><canvas id="pieCanvas" class="chart-canvas" width="1100" height="480"></canvas></div>
+  <div class="section-title">Runoff Ratio Classes<button class="back-btn dlbtn" onclick="dlChart('catCanvas','runoff_classes')">⬇ PNG</button></div>
+  <div class="canvas-wrapper"><canvas id="catCanvas" class="chart-canvas" width="1100" height="480"></canvas></div>
+  <div class="section-title">Cumulative Rainfall and Runoff<button class="back-btn dlbtn" onclick="dlChart('cumCanvas','cumulative')">⬇ PNG</button></div>
+  <div class="canvas-wrapper"><canvas id="cumCanvas" class="chart-canvas" width="1200" height="540"></canvas></div>
+  <div class="section-title">SCS Curve Number Curves (AMC I, II, III)<button class="back-btn dlbtn" onclick="dlChart('curveCanvas','scs_curves')">⬇ PNG</button></div>
+  <div class="canvas-wrapper"><canvas id="curveCanvas" class="chart-canvas" width="1100" height="600"></canvas></div>
+  <div class="section-title">Formulas and Calculation</div><div class="formula-box" id="formulaBox"></div>
+  <div class="section-title">Event Results</div>
+  <div class="input-panel" style="overflow-x:auto;padding:12px"><table class="station-table" id="dataTable"><thead><tr><th>Event</th><th>Rainfall (mm)</th><th>Runoff Q (mm)</th><th>Observed (mm)</th><th>Volume (Mm³)</th><th>Runoff Ratio</th><th>Class</th><th>Rational Peak (m³/s)</th></tr></thead><tbody></tbody></table></div>
+  <div style="text-align:center;margin-top:30px"><button class="liquid-btn" onclick="saveXLSX()">Download Excel (.xlsx)</button><button class="liquid-btn" onclick="saveChartsZip()">All Charts (PNG ZIP)</button><button class="liquid-btn" onclick="saveReport()">Report (TXT)</button><button class="liquid-btn" onclick="saveCSV()">Save Results (CSV)</button><button class="liquid-btn" onclick="goToPage('pageDashboard')">Dashboard</button></div>
+  <div class="footer">Developed by <span>Junaid Ali</span> · Civil Engineering Research</div>
+</div></div>
+
+<script>
+const $=id=>document.getElementById(id);
+function msg(t){const e=$('toast');e.textContent=t;e.classList.add('show');clearTimeout(msg.t);msg.t=setTimeout(()=>e.classList.remove('show'),5000)}
+
+/* ===== Effects: cursor, water drops, rain, waves (one loop) ===== */
+const dot=$('cursorDot'),ring=$('cursorRing'),T=$('trailCanvas'),R=$('rainCanvas'),V=$('waveCanvas');
+const tc=T.getContext('2d'),rc=R.getContext('2d'),wc=V.getContext('2d');
+let parts=[],off=0;const drops=[];
+if(!matchMedia('(pointer:fine)').matches){dot.style.display=ring.style.display='none'}
+function rs(){for(const c of[T,R,V]){c.width=innerWidth;c.height=innerHeight}}
+rs();addEventListener('resize',rs);
+for(let i=0;i<120;i++)drops.push({x:Math.random()*innerWidth,y:Math.random()*innerHeight,l:10+Math.random()*20,s:2+Math.random()*3,o:.15+Math.random()*.3,w:.5+Math.random()*1.5});
+function burst(x,y,n,sp,sz){for(let i=0;i<n;i++)parts.push({x,y,vx:(Math.random()-.5)*sp,vy:(Math.random()-.5)*sp,life:1,size:Math.random()*sz+2,c:Math.random()>.5?'56,189,248':'34,211,238'})}
+addEventListener('pointermove',e=>{dot.style.left=ring.style.left=e.clientX+'px';dot.style.top=ring.style.top=e.clientY+'px';burst(e.clientX,e.clientY,2,3,4)});
+addEventListener('pointerdown',e=>{ring.classList.add('click');burst(e.clientX,e.clientY,40,12,7)});
+addEventListener('pointerup',()=>ring.classList.remove('click'));
+const HOV='button,input,select,textarea,.upload-box,.feature-card';
+document.addEventListener('pointerover',e=>{if(e.target.closest(HOV))ring.classList.add('hover')});
+document.addEventListener('pointerout',e=>{if(e.target.closest(HOV))ring.classList.remove('hover')});
+function wave(y,a,l,col,sp,op){wc.beginPath();wc.moveTo(0,V.height);for(let x=0;x<=V.width;x+=5)wc.lineTo(x,y+Math.sin((x+off*sp)/l)*a);wc.lineTo(V.width,V.height);wc.fillStyle=col;wc.globalAlpha=op;wc.fill();wc.globalAlpha=1}
+function loop(){
+  tc.clearRect(0,0,T.width,T.height);parts=parts.filter(p=>p.life>0&&p.size>.3);
+  for(const p of parts){p.x+=p.vx;p.y+=p.vy;p.vy+=.12;p.life-=.02;p.size*=.975;tc.beginPath();tc.arc(p.x,p.y,p.size,0,6.283);tc.fillStyle=`rgba(${p.c},${p.life*.8})`;tc.shadowColor=`rgba(${p.c},${p.life})`;tc.shadowBlur=12;tc.fill()}
+  tc.shadowBlur=0;rc.clearRect(0,0,R.width,R.height);rc.lineCap='round';
+  for(const d of drops){d.y+=d.s;if(d.y>R.height+20){d.y=-30;d.x=Math.random()*R.width}rc.strokeStyle=`rgba(56,189,248,${d.o})`;rc.lineWidth=d.w;rc.beginPath();rc.moveTo(d.x,d.y);rc.lineTo(d.x-1,d.y+d.l);rc.stroke()}
+  wc.clearRect(0,0,V.width,V.height);
+  wave(V.height-60,25,200,'#0EA5E9',1,.15);wave(V.height-40,30,250,'#38BDF8',.8,.12);wave(V.height-20,20,180,'#22D3EE',1.2,.1);
+  off++;requestAnimationFrame(loop)}
+loop();
+
+/* ===== Navigation ===== */
+let cur='pageDashboard',busy=false;
+function goToPage(id){if(id===cur||busy)return;busy=true;const c=$(cur),n=$(id);c.classList.remove('active');c.classList.add('exit-left');
+  setTimeout(()=>{c.classList.remove('exit-left');n.classList.add('active');n.scrollTop=0;cur=id;busy=false},500)}
+
+/* ===== Input ===== */
+const mean=a=>a.reduce((s,v)=>s+v,0)/a.length;
+const corr=(x,y)=>{const mx=mean(x),my=mean(y);let a=0,b=0,c=0;for(let i=0;i<x.length;i++){a+=(x[i]-mx)*(y[i]-my);b+=(x[i]-mx)**2;c+=(y[i]-my)**2}return b&&c?a/Math.sqrt(b*c):0};
+const num=(id,d)=>{const v=parseFloat($(id).value);return isNaN(v)?d:v};
+function handleCsv(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();
+  r.onload=ev=>{$('manualData').value=ev.target.result.trim();$('csvStatus').style.display='block';$('csvFileName').textContent=f.name;e.target.value=''};r.readAsText(f)}
+function demo(){const P=[62,118,85,142,96,71,160,104,88,127,75,135,92,150,110,68,122,99,145,80];let s=5;const r=()=>(s=(s*16807)%2147483647)/2147483647;
+  let o='event, rainfall_mm, observed_runoff_mm\n';P.forEach((p,i)=>{o+=`${2004+i}, ${p}, ${(scs(p,78,.2).Q*(1+.25*(r()-.5))).toFixed(1)}\n`});$('manualData').value=o.trim()}
+function parseData(){
+  const t=$('manualData').value.trim();if(!t){msg('Enter or upload data first.');return null}
+  const rows=[];let bad=0;
+  for(const l of t.split(/\r?\n/)){const s=l.trim();if(!s)continue;const p=s.split(/[,;\t]/).map(x=>x.trim());if(p.length<2)continue;
+    const P=parseFloat(p[1]);if(isNaN(P)){if(rows.length)bad++;continue}if(P<0){bad++;continue}
+    const o=p.length>2&&p[2]!==''?parseFloat(p[2]):null;
+    rows.push({label:p[0],P,obs:o!==null&&!isNaN(o)&&o>=0?o:null})}
+  if(!rows.length){msg('No valid rows. Use: label, rainfall_mm [, observed_runoff_mm]');return null}
+  if(bad)msg(bad+' invalid row(s) skipped.');
+  if(rows.every(r=>/^\d{4}$/.test(r.label)))rows.sort((a,b)=>a.label-b.label);
+  return rows}
+
+/* ===== SCS-CN and Rational ===== */
+const cnAMC=(cn,a)=>a==='I'?4.2*cn/(10-.058*cn):a==='III'?23*cn/(10+.13*cn):cn;
+function scs(P,CN,lam){const S=25400/CN-254,Ia=lam*S;return{S,Ia,Q:P>Ia?(P-Ia)**2/(P-Ia+S):0}}
+const CLS=['Very Low','Low','Moderate','High','Very High'],CLC=['#10B981','#22D3EE','#F59E0B','#EF4444','#DC2626'];
+const cls=r=>r<.15?0:r<.3?1:r<.5?2:r<.7?3:4;
+
+let A=null;
+function runAnalysis(){
+  const rows=parseData();if(!rows)return;
+  if(rows.length<3){msg('At least 3 events are needed.');return}
+  const CN2=num('curveNumber',NaN),lam=num('lambda',NaN),area=num('catchmentArea',NaN),C=num('runoffCoeff',NaN),I=num('intensity',NaN),D=num('stormDuration',NaN),amc=$('amc').value;
+  if(!(CN2>=30&&CN2<=100)){msg('CN must be between 30 and 100.');return}
+  if(!(lam>=0&&lam<=.5)){msg('Ia/S ratio must be between 0 and 0.5.');return}
+  if(!(area>0)){msg('Catchment area must be above zero.');return}
+  if(!(C>=0&&C<=1)){msg('Runoff coefficient must be between 0 and 1.');return}
+  if(!(I>=0)||!(D>0)){msg('Enter a valid intensity and storm duration.');return}
+  const CN=Math.min(100,cnAMC(CN2,amc));
+  const res=rows.map(r=>{const{Q,S,Ia}=scs(r.P,CN,lam);return{...r,Q,S,Ia,vol:Q/1000*area*1e6,ratio:r.P>0?Q/r.P:0,peak:C*(r.P/(D/60))*area/3.6,iaLoss:Math.min(r.P,Ia),F:Math.max(0,r.P-Ia-Q)}});
+  res.forEach(r=>r.k=cls(r.ratio));
+  const n=res.length,sP=res.reduce((s,r)=>s+r.P,0),sQ=res.reduce((s,r)=>s+r.Q,0),sV=res.reduce((s,r)=>s+r.vol,0);
+  const ratio=sP?sQ/sP:0,peak=C*I*area/3.6,{S,Ia}=scs(0,CN,lam);
+  const ob=res.filter(r=>r.obs!==null);let V=null,best=null;
+  if(ob.length>=3){const mo=mean(ob.map(r=>r.obs)),sse=ob.reduce((s,r)=>s+(r.obs-r.Q)**2,0),sst=ob.reduce((s,r)=>s+(r.obs-mo)**2,0);
+    V={n:ob.length,rmse:Math.sqrt(sse/ob.length),nse:sst?1-sse/sst:NaN,pbias:100*ob.reduce((s,r)=>s+r.Q-r.obs,0)/ob.reduce((s,r)=>s+r.obs,0),r2:corr(ob.map(r=>r.obs),ob.map(r=>r.Q))**2};
+    let bs=Infinity;for(let c=30;c<=99.95;c+=.1){let e=0;ob.forEach(r=>e+=(scs(r.P,c,lam).Q-r.obs)**2);if(e<bs){bs=e;best=c}}}
+  const med=[...res.map(r=>r.P)].sort((a,b)=>a-b)[Math.floor(n/2)],w=[];
+  if(med>400)w.push('These rainfall values look like annual totals. SCS-CN is a storm-event method, so using annual totals overstates runoff badly. Use storm or daily depths (for example the annual maximum daily rainfall).');
+  if(area>5)w.push(`A catchment of ${area} km² is beyond the usual range of the Rational Method (small catchments only, commonly under about 0.8 km², and at most a few km²). Treat the Rational peak as a rough check or use a hydrograph method.`);
+  else if(area>.8)w.push(`At ${area} km² the Rational Method is near its upper limit for a small catchment. Check that the duration equals the time of concentration.`);
+  if(Math.abs(lam-.2)>1e-9)w.push(`Ia/S = ${lam} was used. Standard CN tables are calibrated for 0.2, so make sure your CN was fitted for this ratio.`);
+  const dry=res.filter(r=>r.Q===0).length;if(dry/n>.5)w.push(`${dry} of ${n} events stay below the initial abstraction (Ia = ${Ia.toFixed(1)} mm) and give zero runoff.`);
+  A={rows,res,n,CN,CN2,amc,lam,area,C,I,D,sP,sQ,sV,ratio,peak,S,Ia,V,best,w};
+  $('verdict').innerHTML=`<div class="info-box ${w.length?'warning':'success'}" style="font-size:1rem;padding:22px"><div style="font-size:1.5rem">${w.length?'⚠️':'✅'}</div>SCS-CN with CN = <strong>${CN.toFixed(1)}</strong>${amc!=='II'?` (AMC ${amc}, from CN(II) = ${CN2})`:''} and Ia/S = ${lam}: mean storm of <strong>${(sP/n).toFixed(1)} mm</strong> gives <strong>${(sQ/n).toFixed(1)} mm</strong> of runoff, a runoff ratio of <strong>${(ratio*100).toFixed(1)}%</strong>. Rational peak: <strong>${peak.toFixed(2)} m³/s</strong> (C = ${C}, i = ${I} mm/hr, A = ${area} km²).${w.length?'<br><br>'+w.map(x=>'• '+x).join('<br>'):''}</div>`;
+  const cards=[['Events',n,''],['Mean Rainfall',(sP/n).toFixed(1)+' mm',''],['Mean Runoff',(sQ/n).toFixed(1)+' mm','warn'],['Runoff Ratio',(ratio*100).toFixed(1)+'%',ratio<.2?'good':ratio<.5?'warn':'bad'],['Total Volume',(sV/1e6).toFixed(3)+' Mm³',''],['Rational Peak',peak.toFixed(2)+' m³/s','purple'],['S / Ia',S.toFixed(1)+' / '+Ia.toFixed(1)+' mm','']];
+  if(V)cards.push(['NSE',isNaN(V.nse)?'—':V.nse.toFixed(3),V.nse>.5?'good':'bad'],['RMSE',V.rmse.toFixed(1)+' mm',''],['Bias (PBIAS)',V.pbias.toFixed(1)+'%',''],['Best-fit CN',best.toFixed(1),'purple']);
+  $('summary').innerHTML=cards.map(c=>`<div class="summary-card"><div class="summary-label">${c[0]}</div><div class="summary-value ${c[2]}">${c[1]}</div></div>`).join('');
+  const big=res.reduce((m,r)=>r.P>m.P?r:m,res[0]);
+  $('formulaBox').innerHTML=`<div class="formula-label">SCS Curve Number (storm runoff)</div>S = 25400 / CN − 254 = 25400 / ${CN.toFixed(1)} − 254 = <strong>${S.toFixed(2)} mm</strong><br>Ia = λ × S = ${lam} × ${S.toFixed(2)} = <strong>${Ia.toFixed(2)} mm</strong><br>Q = (P − Ia)² / (P − Ia + S) for P &gt; Ia, otherwise Q = 0<br>${amc!=='II'?`<br><div class="formula-label">Antecedent moisture</div>${amc==='I'?'CN(I) = 4.2·CN(II) / (10 − 0.058·CN(II))':'CN(III) = 23·CN(II) / (10 + 0.13·CN(II))'} = ${CN.toFixed(2)}<br>`:''}<br><div class="formula-label">Example: largest storm (${big.label}, P = ${big.P} mm)</div>Q = (${big.P} − ${Ia.toFixed(2)})² / (${big.P} − ${Ia.toFixed(2)} + ${S.toFixed(2)}) = <strong>${big.Q.toFixed(2)} mm</strong> (${(big.ratio*100).toFixed(1)}% of rainfall)<br>Volume = Q/1000 × A × 10⁶ = ${(big.vol/1e6).toFixed(4)} Mm³<br><br><div class="formula-label">Rational Method (small catchments)</div>Qp = C × i × A / 3.6 = ${C} × ${I} × ${area} / 3.6 = <strong>${peak.toFixed(3)} m³/s</strong><br>i in mm/hr, A in km², Qp in m³/s. The intensity should be the design intensity for a duration equal to the time of concentration (${D} min here). The per-event peak in the table uses i = P / duration.`;
+  $('dataTable').tBodies[0].innerHTML=res.map(r=>`<tr><td style="color:#38BDF8;font-weight:600">${r.label}</td><td>${r.P.toFixed(1)}</td><td style="color:#22D3EE;font-weight:700">${r.Q.toFixed(1)}</td><td>${r.obs===null?'—':r.obs.toFixed(1)}</td><td>${(r.vol/1e6).toFixed(4)}</td><td style="color:${CLC[r.k]}">${(r.ratio*100).toFixed(1)}%</td><td style="color:${CLC[r.k]};font-weight:600">${CLS[r.k]}</td><td>${r.peak.toFixed(2)}</td></tr>`).join('');
+  goToPage('pageResults');setTimeout(drawAll,600)}
+
+/* ===== Charts ===== */
+function nice(r){const p=10**Math.floor(Math.log10(r)),f=r/p;return(f<1.5?1:f<3?2:f<7?5:10)*p}
+function frame(id,title,xl,yl,x0,x1,y0,y1,xt){
+  const cv=$(id),c=cv.getContext('2d'),W=cv.width,H=cv.height,L=100,Rt=40,Tp=70,B=80;
+  const g=c.createLinearGradient(0,0,W,H);g.addColorStop(0,'#050a14');g.addColorStop(1,'#0a1423');c.fillStyle=g;c.fillRect(0,0,W,H);
+  const sy=nice((y1-y0)/6||1);y0=Math.floor(y0/sy)*sy;y1=Math.ceil(y1/sy)*sy;let tk=xt;
+  if(!tk){const sx=nice((x1-x0)/6||1);x0=Math.floor(x0/sx)*sx;x1=Math.ceil(x1/sx)*sx;tk=[];for(let v=x0;v<=x1+1e-9;v+=sx)tk.push({v,l:Math.round(v)})}
+  const px=x=>L+(x-x0)/(x1-x0)*(W-L-Rt),py=y=>H-B-(y-y0)/(y1-y0)*(H-Tp-B);
+  c.font='14px Times New Roman';c.lineWidth=1;
+  for(const t of tk){c.strokeStyle='rgba(56,189,248,.09)';c.beginPath();c.moveTo(px(t.v),py(y0));c.lineTo(px(t.v),py(y1));c.stroke();c.fillStyle='#94A3B8';c.textAlign='center';c.fillText(t.l,px(t.v),H-B+22)}
+  for(let v=y0;v<=y1+1e-9;v+=sy){c.strokeStyle='rgba(56,189,248,.09)';c.beginPath();c.moveTo(px(x0),py(v));c.lineTo(px(x1),py(v));c.stroke();c.fillStyle='#94A3B8';c.textAlign='right';c.fillText(Math.round(v),L-10,py(v)+5)}
+  c.strokeStyle='rgba(56,189,248,.5)';c.lineWidth=2;c.beginPath();c.moveTo(px(x0),py(y1));c.lineTo(px(x0),py(y0));c.lineTo(px(x1),py(y0));c.stroke();
+  c.fillStyle='#94A3B8';c.textAlign='center';c.font='15px Times New Roman';c.fillText(xl,(L+W-Rt)/2,H-22);
+  c.save();c.translate(28,(Tp+H-B)/2);c.rotate(-Math.PI/2);c.fillText(yl,0,0);c.restore();
+  c.fillStyle='#38BDF8';c.font='bold 21px Times New Roman';c.fillText(title,W/2,34);
+  return{c,px,py,L,Tp,W,Rt,H,B,x0,x1,y0,y1}}
+function legend(c,x,y,it){c.font='14px Times New Roman';c.textAlign='left';it.forEach((q,k)=>{c.fillStyle=q[0];if(q[2])c.fillRect(x-8,y+k*24-2,18,4);else{c.beginPath();c.arc(x,y+k*24,6,0,6.283);c.fill()}c.fillStyle='#CBD5E1';c.fillText(q[1],x+18,y+k*24+5)})}
+const xtIdx=rows=>{const st=Math.ceil(rows.length/14);return rows.map((r,i)=>({v:i+1,l:String(r.label).slice(-8)})).filter((_,i)=>i%st===0)};
+function drawAll(){if(!A)return;drawBars();drawScatter();drawPie();drawCat();drawCum();drawCurves()}
+function drawBars(){const{res,n}=A,hasO=res.some(r=>r.obs!==null),hi=Math.max(...res.map(r=>Math.max(r.P,r.obs||0)))*1.1;
+  const{c,px,py,L,Tp}=frame('compareCanvas','Rainfall vs Runoff per Event','Event','Depth (mm)',.4,n+.6,0,hi,xtIdx(res));
+  const slot=px(2)-px(1),bw=Math.max(3,slot*(hasO?.26:.34)),base=py(0);
+  const bar=(x,v,a,b)=>{if(v<=0)return;const g=c.createLinearGradient(0,py(v),0,base);g.addColorStop(0,a);g.addColorStop(1,b);c.fillStyle=g;c.fillRect(x,py(v),bw,base-py(v))};
+  res.forEach((r,i)=>{const x=px(i+1);if(hasO){bar(x-1.5*bw-2,r.P,'#38BDF8','#0369A1');bar(x-.5*bw,r.Q,'#A78BFA','#6D28D9');bar(x+.5*bw+2,r.obs||0,'#F59E0B','#B45309')}else{bar(x-bw-1,r.P,'#38BDF8','#0369A1');bar(x+1,r.Q,'#A78BFA','#6D28D9')}});
+  legend(c,L+20,Tp+14,[['#38BDF8','Rainfall'],['#A78BFA','SCS-CN runoff']].concat(hasO?[['#F59E0B','Observed runoff']]:[]))}
+function drawScatter(){const{res,V,CN,lam}=A;
+  if(V){$('scatterTitle').textContent='Observed vs Simulated Runoff';const ob=res.filter(r=>r.obs!==null),hi=Math.max(...ob.map(r=>Math.max(r.obs,r.Q)))*1.1;
+    const{c,px,py,L,Tp,x1,y1}=frame('scatterCanvas','Observed vs SCS-CN Runoff','Observed runoff (mm)','Simulated runoff (mm)',0,hi,0,hi),m=Math.min(x1,y1);
+    c.save();c.strokeStyle='#FFFFFF';c.lineWidth=1.5;c.setLineDash([3,6]);c.beginPath();c.moveTo(px(0),py(0));c.lineTo(px(m),py(m));c.stroke();c.restore();
+    ob.forEach(r=>{c.beginPath();c.arc(px(r.obs),py(r.Q),7,0,6.283);c.fillStyle='rgba(56,189,248,.85)';c.shadowColor='#38BDF8';c.shadowBlur=10;c.fill();c.shadowBlur=0});
+    legend(c,L+20,Tp+14,[['#38BDF8','Events'],['#FFFFFF','1:1 line',1]]);c.fillStyle='#F59E0B';c.font='bold 14px Times New Roman';c.textAlign='left';
+    c.fillText(`NSE = ${V.nse.toFixed(3)}   R² = ${V.r2.toFixed(3)}   RMSE = ${V.rmse.toFixed(1)} mm   PBIAS = ${V.pbias.toFixed(1)}%`,L+20,Tp+80);c.fillText(`Best-fit CN = ${A.best.toFixed(1)} (used: ${CN.toFixed(1)})`,L+20,Tp+102)}
+  else{$('scatterTitle').textContent='Runoff Ratio vs Rainfall';const Pm=Math.max(...res.map(r=>r.P))*1.2;
+    const{c,px,py,L,Tp}=frame('scatterCanvas','Runoff Ratio Q/P vs Storm Rainfall','Storm rainfall P (mm)','Runoff ratio Q/P (%)',0,Pm,0,100);
+    c.save();c.strokeStyle='#10B981';c.lineWidth=3;c.shadowColor='#10B981';c.shadowBlur=12;c.beginPath();for(let k=1;k<=200;k++){const P=Pm*k/200,y=scs(P,CN,lam).Q/P*100;k===1?c.moveTo(px(P),py(y)):c.lineTo(px(P),py(y))}c.stroke();c.restore();
+    c.save();c.strokeStyle='#F59E0B';c.lineWidth=1.5;c.setLineDash([8,6]);c.beginPath();c.moveTo(px(0),py(A.ratio*100));c.lineTo(px(Pm),py(A.ratio*100));c.stroke();c.restore();
+    res.forEach(r=>{c.beginPath();c.arc(px(r.P),py(r.ratio*100),6,0,6.283);c.fillStyle='#38BDF8';c.shadowColor='#38BDF8';c.shadowBlur=10;c.fill();c.shadowBlur=0});
+    legend(c,L+20,Tp+14,[['#10B981','SCS-CN ratio curve',1],['#38BDF8','Events'],['#F59E0B','Mean ratio',1]])}}
+function drawPie(){const cv=$('pieCanvas'),c=cv.getContext('2d'),W=cv.width,H=cv.height;
+  const g=c.createLinearGradient(0,0,W,H);g.addColorStop(0,'#050a14');g.addColorStop(1,'#0a1423');c.fillStyle=g;c.fillRect(0,0,W,H);
+  const{res,sP,sQ}=A,ia=res.reduce((s,r)=>s+r.iaLoss,0),F=res.reduce((s,r)=>s+r.F,0);
+  const sl=[['Direct runoff (Q)',sQ,'#A78BFA'],['Initial abstraction (Ia)',ia,'#F59E0B'],['Retention after runoff starts (F)',F,'#10B981']].filter(s=>s[1]>0);
+  const cx=W*.32,cy=H/2+15,R=Math.min(W,H)*.34;let a0=-Math.PI/2;
+  sl.forEach(s=>{const a=s[1]/sP*Math.PI*2;c.beginPath();c.moveTo(cx,cy);c.arc(cx,cy,R,a0,a0+a);c.closePath();c.fillStyle=s[2];c.shadowColor=s[2];c.shadowBlur=14;c.fill();c.shadowBlur=0;c.strokeStyle='#0A1628';c.lineWidth=3;c.stroke();
+    if(s[1]/sP>.04){const m=a0+a/2;c.fillStyle='#0A1628';c.font='bold 20px Times New Roman';c.textAlign='center';c.textBaseline='middle';c.fillText((s[1]/sP*100).toFixed(1)+'%',cx+Math.cos(m)*R*.65,cy+Math.sin(m)*R*.65)}a0+=a});
+  c.textBaseline='alphabetic';c.textAlign='left';sl.forEach((s,i)=>{const y=H/2-40+i*70;c.fillStyle=s[2];c.fillRect(W*.62,y,26,26);c.fillStyle='#E2E8F0';c.font='bold 16px Times New Roman';c.fillText(s[0],W*.62+38,y+18);c.fillStyle='#94A3B8';c.font='13px Times New Roman';c.fillText(s[1].toFixed(0)+' mm over all events',W*.62+38,y+40)});
+  c.fillStyle='#38BDF8';c.font='bold 21px Times New Roman';c.textAlign='center';c.fillText('Where the Rainfall Goes (all events together)',W/2,34)}
+function drawCat(){const cnt=CLS.map((_,k)=>A.res.filter(r=>r.k===k).length),hi=Math.max(6,Math.max(...cnt)*1.25);
+  const{c,px,py}=frame('catCanvas','Number of Events by Runoff Ratio Class','Class (runoff ratio Q/P)','Number of events',.4,5.6,0,hi,CLS.map((l,i)=>({v:i+1,l})));
+  const bw=(px(2)-px(1))*.55,base=py(0);cnt.forEach((v,i)=>{const x=px(i+1)-bw/2,y=py(v);const g=c.createLinearGradient(0,y,0,base);g.addColorStop(0,CLC[i]);g.addColorStop(1,CLC[i]+'66');c.fillStyle=g;c.shadowColor=CLC[i];c.shadowBlur=12;c.fillRect(x,y,bw,base-y);c.shadowBlur=0;c.fillStyle='#E2E8F0';c.font='bold 16px Times New Roman';c.textAlign='center';c.fillText(v,px(i+1),y-8)});
+  c.fillStyle='#64748B';c.font='13px Times New Roman';c.textAlign='center';['< 15%','15–30%','30–50%','50–70%','≥ 70%'].forEach((t,i)=>c.fillText(t,px(i+1),py(0)+42))}
+function drawCum(){const{res,n}=A,hasO=res.some(r=>r.obs!==null);let p=0,q=0,o=0;const cp=[{x:0,y:0}],cq=[{x:0,y:0}],co=[{x:0,y:0}];
+  res.forEach((r,i)=>{p+=r.P;q+=r.Q;o+=r.obs||0;cp.push({x:i+1,y:p});cq.push({x:i+1,y:q});co.push({x:i+1,y:o})});
+  const{c,px,py,L,Tp}=frame('cumCanvas','Cumulative Rainfall and Runoff (events in order)','Event','Cumulative depth (mm)',0,n+.4,0,p*1.08,xtIdx(res));
+  const line=(pts,col,fill)=>{c.beginPath();c.moveTo(px(0),py(0));pts.forEach(t=>c.lineTo(px(t.x),py(t.y)));c.lineTo(px(n),py(0));c.closePath();c.fillStyle=fill;c.fill();c.save();c.strokeStyle=col;c.lineWidth=3;c.shadowColor=col;c.shadowBlur=10;c.beginPath();pts.forEach((t,i)=>i?c.lineTo(px(t.x),py(t.y)):c.moveTo(px(t.x),py(t.y)));c.stroke();c.restore()};
+  line(cp,'#38BDF8','rgba(56,189,248,.18)');line(cq,'#A78BFA','rgba(167,139,250,.22)');if(hasO)line(co,'#F59E0B','rgba(245,158,11,.12)');
+  legend(c,L+20,Tp+14,[['#38BDF8','Cumulative rainfall',1],['#A78BFA','Cumulative SCS-CN runoff',1]].concat(hasO?[['#F59E0B','Cumulative observed runoff',1]]:[]))}
+function drawCurves(){const{res,CN2,CN,lam,amc}=A,Pm=Math.max(...res.map(r=>r.P))*1.15;
+  const{c,px,py,L,Tp,x1,y1}=frame('curveCanvas',`SCS Runoff Curves for CN(II) = ${CN2}`,'Storm rainfall P (mm)','Runoff Q (mm)',0,Pm,0,Pm*.95),m=Math.min(x1,y1);
+  const curve=(cn,col,w,dash)=>{c.save();c.strokeStyle=col;c.lineWidth=w;c.setLineDash(dash||[]);c.beginPath();for(let k=0;k<=160;k++){const P=Pm*k/160,Q=scs(P,cn,lam).Q;k?c.lineTo(px(P),py(Q)):c.moveTo(px(P),py(Q))}c.stroke();c.restore()};
+  c.save();c.strokeStyle='rgba(255,255,255,.35)';c.lineWidth=1.2;c.setLineDash([3,6]);c.beginPath();c.moveTo(px(0),py(0));c.lineTo(px(m),py(m));c.stroke();c.restore();c.fillStyle='rgba(255,255,255,.5)';c.font='13px Times New Roman';c.textAlign='right';c.fillText('Q = P (no losses)',px(m)-8,py(m)+16);
+  const set=[['I','#10B981'],['II','#38BDF8'],['III','#EF4444']];
+  set.forEach(([a,col])=>curve(Math.min(100,cnAMC(CN2,a)),col,a===amc?4:2,a===amc?[]:[8,5]));
+  res.forEach(r=>{c.beginPath();c.arc(px(r.P),py(r.Q),6,0,6.283);c.fillStyle='#F59E0B';c.shadowColor='#F59E0B';c.shadowBlur=12;c.fill();c.shadowBlur=0;c.strokeStyle='#0A1628';c.lineWidth=2;c.stroke();
+    if(r.obs!==null){c.beginPath();c.arc(px(r.P),py(r.obs),6,0,6.283);c.strokeStyle='#FFFFFF';c.lineWidth=2;c.stroke()}});
+  const ob=res.some(r=>r.obs!==null);
+  legend(c,L+20,Tp+14,set.map(([a,col])=>[col,`AMC ${a}: CN = ${Math.min(100,cnAMC(CN2,a)).toFixed(1)}${a===amc?' (used)':''}`,1]).concat([['#F59E0B','SCS-CN estimate for your storms']],ob?[['#FFFFFF','Observed runoff (ring)']]:[]))}
+
+/* ===== Save ===== */
+function dl(txt,type,name){const u=URL.createObjectURL(new Blob([txt],{type})),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000)}
+function saveReport(){if(!A)return;const l='='.repeat(45),V=A.V;
+  let o=`${l}\n  RUNOFF ESTIMATION REPORT\n  SCS-CN & Rational Method\n${l}\n\nGenerated: ${new Date().toLocaleString()}\nEvents: ${A.n}\nCN(II): ${A.CN2}  AMC: ${A.amc}  effective CN: ${A.CN.toFixed(2)}\nIa/S: ${A.lam}  S: ${A.S.toFixed(2)} mm  Ia: ${A.Ia.toFixed(2)} mm\nArea: ${A.area} km2  C: ${A.C}  i: ${A.I} mm/hr  duration: ${A.D} min\n\nTotal rainfall: ${A.sP.toFixed(1)} mm\nTotal runoff: ${A.sQ.toFixed(1)} mm\nRunoff ratio: ${(A.ratio*100).toFixed(2)} %\nTotal volume: ${(A.sV/1e6).toFixed(4)} Mm3\nRational peak: ${A.peak.toFixed(3)} m3/s\n`;
+  if(V)o+=`\nValidation (${V.n} events): NSE ${V.nse.toFixed(3)}, R2 ${V.r2.toFixed(3)}, RMSE ${V.rmse.toFixed(2)} mm, PBIAS ${V.pbias.toFixed(2)} %, best-fit CN ${A.best.toFixed(1)}\n`;
+  if(A.w.length)o+='\nWarnings:\n'+A.w.map(x=>'- '+x).join('\n')+'\n';
+  o+='\nEvent | Rain | Runoff | Observed | Volume Mm3 | Ratio | Class | Rational peak\n';A.res.forEach(r=>o+=`${r.label} | ${r.P.toFixed(1)} | ${r.Q.toFixed(1)} | ${r.obs===null?'':r.obs.toFixed(1)} | ${(r.vol/1e6).toFixed(4)} | ${(r.ratio*100).toFixed(1)}% | ${CLS[r.k]} | ${r.peak.toFixed(2)}\n`);
+  o+='\nDeveloped by Junaid Ali · Civil Engineering Research\n';dl(o,'text/plain','runoff_report_'+Date.now()+'.txt');msg('Report saved.')}
+function saveCSV(){if(!A)return;let o='event,rainfall_mm,runoff_mm,observed_mm,volume_m3,runoff_ratio,class,rational_peak_m3s\n';
+  A.res.forEach(r=>o+=`${r.label},${r.P.toFixed(2)},${r.Q.toFixed(2)},${r.obs===null?'':r.obs.toFixed(2)},${r.vol.toFixed(1)},${r.ratio.toFixed(4)},${CLS[r.k]},${r.peak.toFixed(3)}\n`);
+  dl(o,'text/csv','runoff_results_'+Date.now()+'.csv');msg('CSV saved.')}
+
+/* ===== Export: chart PNGs, ZIP and Excel ===== */
+const CH=[['compareCanvas','Rainfall vs Runoff per Event','rainfall_vs_runoff'],['scatterCanvas',null,'scatter'],['pieCanvas','Rainfall Partition','rainfall_partition'],['catCanvas','Runoff Ratio Classes','runoff_classes'],['cumCanvas','Cumulative Rainfall and Runoff','cumulative'],['curveCanvas','SCS Curve Number Curves (AMC I, II, III)','scs_curves']];
+function dlBlob(b,name){const u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000)}
+const pngBytes=id=>{const b=atob($(id).toDataURL('image/png').split(',')[1]),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u};
+function dlChart(id,name){if(!A){msg('Run the estimation first.');return}$(id).toBlob(b=>dlBlob(b,'runoff_'+name+'.png'))}
+const CRCT=(()=>{const t=[];for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+const crc32=b=>{let c=0xFFFFFFFF;for(let i=0;i<b.length;i++)c=CRCT[(c^b[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0};
+function zip(files){const enc=new TextEncoder(),parts=[],cd=[];let off=0;const d=new Date(),dt=(d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1),dd=((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate();
+  for(const f of files){const nm=enc.encode(f.name),crc=crc32(f.data),sz=f.data.length;
+    const lh=new DataView(new ArrayBuffer(30));lh.setUint32(0,0x04034b50,true);lh.setUint16(4,20,true);lh.setUint16(6,0x0800,true);lh.setUint16(10,dt,true);lh.setUint16(12,dd,true);lh.setUint32(14,crc,true);lh.setUint32(18,sz,true);lh.setUint32(22,sz,true);lh.setUint16(26,nm.length,true);
+    parts.push(new Uint8Array(lh.buffer),nm,f.data);
+    const ch=new DataView(new ArrayBuffer(46));ch.setUint32(0,0x02014b50,true);ch.setUint16(4,20,true);ch.setUint16(6,20,true);ch.setUint16(8,0x0800,true);ch.setUint16(12,dt,true);ch.setUint16(14,dd,true);ch.setUint32(16,crc,true);ch.setUint32(20,sz,true);ch.setUint32(24,sz,true);ch.setUint16(28,nm.length,true);ch.setUint32(42,off,true);
+    cd.push(new Uint8Array(ch.buffer),nm);off+=30+nm.length+sz}
+  const cs=cd.reduce((t,a)=>t+a.length,0),e=new DataView(new ArrayBuffer(22));e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,cs,true);e.setUint32(16,off,true);
+  return new Blob([...parts,...cd,new Uint8Array(e.buffer)],{type:'application/zip'})}
+function saveChartsZip(){if(!A){msg('Run the estimation first.');return}
+  dlBlob(zip(CH.map(c=>({name:'runoff_'+c[2]+'.png',data:pngBytes(c[0])}))),'runoff_charts_'+Date.now()+'.zip');msg('Charts ZIP saved.')}
+const X='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',NS='http://schemas.openxmlformats.org/',RT=NS+'officeDocument/2006/relationships/';
+const esc=v=>String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const colL=n=>{let r='';n++;while(n>0){const m=(n-1)%26;r=String.fromCharCode(65+m)+r;n=Math.floor((n-1)/26)}return r};
+const tx=(v,s)=>({t:String(v),s:s||0}),nv=(v,s,f)=>({v:isFinite(v)?+v:0,s:s||0,f});
+function cellXml(r,c,x){if(x===null||x===undefined||x==='')return'';const ref=colL(c)+(r+1);
+  if(typeof x==='number')return`<c r="${ref}"><v>${x}</v></c>`;if(typeof x==='string')x=tx(x);
+  const st=x.s?` s="${x.s}"`:'';
+  if(x.t!==undefined)return`<c r="${ref}"${st} t="inlineStr"><is><t xml:space="preserve">${esc(x.t)}</t></is></c>`;
+  return`<c r="${ref}"${st}>${x.f?`<f>${esc(x.f)}</f>`:''}<v>${x.v}</v></c>`}
+function sheetXml(rows,widths,drawing){let rx='';for(let i=0;i<rows.length;i++){const r=rows[i]||[];rx+=`<row r="${i+1}">${r.map((x,j)=>cellXml(i,j,x)).join('')}</row>`}
+  return`${X}<worksheet xmlns="${NS}spreadsheetml/2006/main" xmlns:r="${RT.slice(0,-1)}">${widths?'<cols>'+widths.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join('')+'</cols>':''}<sheetData>${rx}</sheetData>${drawing?'<drawing r:id="rId1"/>':''}</worksheet>`}
+function saveXLSX(){
+  if(!A){msg('Run the estimation first.');return}
+  const{res,n,V,w}=A,R=n+1,E=new TextEncoder();
+  const sum=[[tx('Runoff Estimation Report',5)],[tx('Generated: '+new Date().toLocaleString())],[tx('Parameter',1),tx('Value',1)],
+    [tx('CN (AMC II)'),nv(A.CN2)],[tx('AMC'),tx(A.amc)],[tx('Effective CN (used)'),nv(A.CN,2)],[tx('Ia/S ratio (lambda)'),nv(A.lam)],
+    [tx('S, max retention (mm)'),nv(A.S,6,'25400/B6-254')],[tx('Ia, initial abstraction (mm)'),nv(A.Ia,6,'B7*B8')],
+    [tx('Catchment area (km2)'),nv(A.area)],[tx('Runoff coefficient C'),nv(A.C)],[tx('Design intensity i (mm/hr)'),nv(A.I)],[tx('Storm duration = tc (min)'),nv(A.D)],
+    [tx('Rational peak Qp (m3/s)'),nv(A.peak,6,'B11*B12*B10/3.6')],[],
+    [tx('Result',1),tx('Value',1)],
+    [tx('Events'),nv(n,0,`COUNT(Events!B2:B${R})`)],[tx('Total rainfall (mm)'),nv(A.sP,2,`SUM(Events!B2:B${R})`)],[tx('Total runoff (mm)'),nv(A.sQ,2,`SUM(Events!C2:C${R})`)],
+    [tx('Runoff ratio'),nv(A.ratio,4,'IF(B18>0,B19/B18,0)')],[tx('Total volume (Mm3)'),nv(A.sV/1e6,3,`SUM(Events!E2:E${R})`)]];
+  if(V)sum.push([],[tx('Validation (observed runoff)',1),tx('Value',1)],[tx('Events used'),nv(V.n)],[tx('NSE'),nv(V.nse,3)],[tx('R2'),nv(V.r2,3)],[tx('RMSE (mm)'),nv(V.rmse,6)],[tx('PBIAS (%)'),nv(V.pbias,2)],[tx('Best-fit CN (least squares)'),nv(A.best,2)]);
+  sum.push([],[tx('Notes',1)],[tx('Change the parameters in column B (rows 6, 7, 10-13) and the Events sheet recalculates. The Charts sheet shows pictures of the original run.')]);
+  w.forEach(x=>sum.push([tx(x)]));
+  const ev=[['Event','Rainfall (mm)','Runoff Q (mm)','Observed (mm)','Volume (Mm3)','Runoff ratio','Class','Rational peak (m3/s)'].map(h=>tx(h,1))];
+  res.forEach((r,i)=>{const k=i+2;ev.push([tx(r.label),nv(r.P,6),nv(r.Q,6,`IF(B${k}>Summary!$B$9,(B${k}-Summary!$B$9)^2/(B${k}-Summary!$B$9+Summary!$B$8),0)`),r.obs===null?null:nv(r.obs,6),nv(r.vol/1e6,3,`C${k}/1000*Summary!$B$10`),nv(r.ratio,4,`IF(B${k}>0,C${k}/B${k},0)`),tx(CLS[r.k]),nv(r.peak,6,`Summary!$B$11*(B${k}/(Summary!$B$13/60))*Summary!$B$10/3.6`)])});
+  const chRows=[],anch=[];let cur=0;
+  CH.forEach((c,i)=>{const cv=$(c[0]),wd=960,h=Math.round(cv.height*wd/cv.width);chRows[cur]=[tx(c[1]||$('scatterTitle').textContent,5)];anch.push({row:cur+1,w:wd,h});cur+=Math.ceil(h/20)+3});
+  const pic=(a,i)=>`<xdr:oneCellAnchor><xdr:from><xdr:col>0</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${a.row}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:ext cx="${a.w*9525}" cy="${a.h*9525}"/><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${i+2}" name="Chart ${i+1}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="rId${i+1}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${a.w*9525}" cy="${a.h*9525}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:oneCellAnchor>`;
+  const drawing=`${X}<xdr:wsDr xmlns:xdr="${NS}drawingml/2006/spreadsheetDrawing" xmlns:a="${NS}drawingml/2006/main" xmlns:r="${RT.slice(0,-1)}">${anch.map(pic).join('')}</xdr:wsDr>`;
+  const rel=(id,type,target)=>`<Relationship Id="${id}" Type="${RT}${type}" Target="${target}"/>`,RS=`<Relationships xmlns="${NS}package/2006/relationships">`;
+  const ws=i=>`<Override PartName="/xl/worksheets/sheet${i}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`;
+  const xf=(nf,fo,fi)=>`<xf numFmtId="${nf}" fontId="${fo}" fillId="${fi}" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1"/>`;
+  const styles=`${X}<styleSheet xmlns="${NS}spreadsheetml/2006/main"><numFmts count="3"><numFmt numFmtId="164" formatCode="0.0"/><numFmt numFmtId="165" formatCode="0.0000"/><numFmt numFmtId="166" formatCode="0.0%"/></numFmts><fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font><font><b/><sz val="12"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF0369A1"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="7">${xf(0,0,0)}${xf(0,1,2)}${xf(164,0,0)}${xf(165,0,0)}${xf(166,0,0)}${xf(0,2,0)}${xf(2,0,0)}</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+  const parts=[['[Content_Types].xml',`${X}<Types xmlns="${NS}package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${ws(1)}${ws(2)}${ws(3)}<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/></Types>`],
+    ['_rels/.rels',`${X}${RS}${rel('rId1','officeDocument','xl/workbook.xml')}</Relationships>`],
+    ['xl/workbook.xml',`${X}<workbook xmlns="${NS}spreadsheetml/2006/main" xmlns:r="${RT.slice(0,-1)}"><sheets><sheet name="Summary" sheetId="1" r:id="rId1"/><sheet name="Events" sheetId="2" r:id="rId2"/><sheet name="Charts" sheetId="3" r:id="rId3"/></sheets><calcPr fullCalcOnLoad="1"/></workbook>`],
+    ['xl/_rels/workbook.xml.rels',`${X}${RS}${rel('rId1','worksheet','worksheets/sheet1.xml')}${rel('rId2','worksheet','worksheets/sheet2.xml')}${rel('rId3','worksheet','worksheets/sheet3.xml')}${rel('rId4','styles','styles.xml')}</Relationships>`],
+    ['xl/styles.xml',styles],['xl/worksheets/sheet1.xml',sheetXml(sum,[36,22])],['xl/worksheets/sheet2.xml',sheetXml(ev,[14,16,16,16,16,14,12,22])],['xl/worksheets/sheet3.xml',sheetXml(chRows,[14],true)],
+    ['xl/worksheets/_rels/sheet3.xml.rels',`${X}${RS}${rel('rId1','drawing','../drawings/drawing1.xml')}</Relationships>`],['xl/drawings/drawing1.xml',drawing],
+    ['xl/drawings/_rels/drawing1.xml.rels',`${X}${RS}${CH.map((c,i)=>rel('rId'+(i+1),'image',`../media/image${i+1}.png`)).join('')}</Relationships>`]].map(([name,x])=>({name,data:E.encode(x)}));
+  CH.forEach((c,i)=>parts.push({name:`xl/media/image${i+1}.png`,data:pngBytes(c[0])}));
+  dlBlob(new Blob([zip(parts)],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),'runoff_estimation_'+Date.now()+'.xlsx');msg('Excel file saved.')}
+</script>
+</body>
+</html>

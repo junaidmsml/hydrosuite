@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Design Flood Estimation — Precipitation Analyzer</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Times New Roman',Times,serif}
+@media (hover:hover) and (pointer:fine){*{cursor:none}}
+body{background:#0A1628;min-height:100vh;overflow-x:hidden;color:#E2E8F0}
+option{background:#0A1628;color:#E2E8F0}
+.cursor-dot{position:fixed;width:8px;height:8px;background:#38BDF8;border-radius:50%;pointer-events:none;z-index:9999;box-shadow:0 0 20px #38BDF8,0 0 40px #38BDF8;transform:translate(-50%,-50%)}
+.cursor-ring{position:fixed;width:40px;height:40px;border:2px solid rgba(56,189,248,.5);border-radius:50%;pointer-events:none;z-index:9998;transform:translate(-50%,-50%);transition:width .3s,height .3s,background .3s,border-color .3s}
+.cursor-ring.hover{width:70px;height:70px;border-color:rgba(34,211,238,.9);background:rgba(34,211,238,.12)}
+.cursor-ring.click{width:100px;height:100px;border-color:#22D3EE;background:rgba(34,211,238,.2)}
+canvas.fx{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none}
+#rainCanvas{z-index:1}#waveCanvas{z-index:2}#trailCanvas{z-index:50}
+.bg{position:fixed;inset:0;pointer-events:none;z-index:1;background:radial-gradient(circle at 20% 30%,rgba(56,189,248,.08),transparent 50%),radial-gradient(circle at 80% 70%,rgba(14,165,233,.06),transparent 50%)}
+.grid-overlay{position:fixed;inset:0;pointer-events:none;z-index:1;background-image:linear-gradient(rgba(56,189,248,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(56,189,248,.03) 1px,transparent 1px);background-size:80px 80px}
+.page{position:fixed;inset:0;overflow-y:auto;z-index:10;opacity:0;visibility:hidden;transform:translateX(100%) scale(.95);transition:all .7s cubic-bezier(.23,1,.32,1);padding:30px 20px}
+.page.active{opacity:1;visibility:visible;transform:none}
+.page.exit-left{transform:translateX(-100%) scale(.95);opacity:0}
+.container{max-width:1300px;margin:0 auto}
+.page-header{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:30px;padding:20px 25px;background:rgba(15,23,42,.7);backdrop-filter:blur(20px);border-radius:18px;border:1px solid rgba(56,189,248,.15)}
+.page-header h2{font-size:1.4rem;color:#38BDF8;letter-spacing:1px}
+.back-btn{padding:10px 22px;border:1px solid rgba(56,189,248,.3);border-radius:10px;background:rgba(56,189,248,.08);color:#38BDF8;font-size:.9rem;font-weight:600;transition:all .3s}
+.back-btn:hover{background:rgba(56,189,248,.2);transform:translateY(-3px)}
+.hero{text-align:center;padding:50px 20px 30px}
+.badge{display:inline-block;padding:8px 22px;border-radius:30px;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.3);font-size:.75rem;letter-spacing:4px;text-transform:uppercase;color:#38BDF8;margin-bottom:24px;animation:fl 3s ease-in-out infinite}
+@keyframes fl{50%{transform:translateY(-6px)}}
+.hero h1{font-size:3.5rem;font-weight:900;background:linear-gradient(90deg,#38BDF8,#0EA5E9,#22D3EE,#38BDF8);background-size:300% auto;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:sh 5s linear infinite;margin-bottom:12px;line-height:1.1}
+@keyframes sh{to{background-position:300% center}}
+.author{font-size:1.15rem;color:#38BDF8;font-weight:700;letter-spacing:3px;margin-bottom:16px;animation:ng 3s ease-in-out infinite}
+@keyframes ng{0%,100%{text-shadow:0 0 15px rgba(56,189,248,.5)}50%{text-shadow:0 0 35px rgba(56,189,248,.9)}}
+.subtitle{color:#94A3B8;letter-spacing:2px;margin-bottom:12px;font-style:italic}
+.desc{color:#7C8CA3;max-width:720px;margin:0 auto;line-height:1.7}
+.section-title{font-size:1.4rem;margin:40px 0 20px;padding-bottom:12px;border-bottom:1px solid rgba(56,189,248,.15);display:flex;align-items:center}
+.section-title::before{content:'';width:5px;height:24px;background:linear-gradient(180deg,#38BDF8,#22D3EE);margin-right:14px;border-radius:3px}
+.features-grid,.summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px;margin-bottom:30px}
+.feature-card,.summary-card,.input-panel{background:rgba(15,23,42,.7);backdrop-filter:blur(20px);border-radius:14px;padding:24px;border:1px solid rgba(56,189,248,.15);transition:all .4s}
+.feature-card:hover,.summary-card:hover{transform:translateY(-6px);box-shadow:0 20px 40px rgba(0,0,0,.4),0 0 30px rgba(56,189,248,.15);border-color:rgba(56,189,248,.4)}
+.feature-card h4{color:#38BDF8;margin-bottom:10px;font-size:1.05rem}
+.feature-card p{font-size:.92rem;color:#94A3B8;line-height:1.6}
+.input-panel{margin-bottom:24px}
+.input-panel h3{font-size:1rem;color:#38BDF8;margin-bottom:20px;letter-spacing:1.5px;text-transform:uppercase}
+.input-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:20px}
+label{display:block;font-size:.78rem;color:#94A3B8;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;font-weight:600}
+input,select,textarea{width:100%;padding:12px 16px;border-radius:10px;border:1px solid rgba(56,189,248,.2);background:rgba(0,0,0,.4);color:#E2E8F0;font-size:.95rem;outline:none;transition:all .3s}
+input:focus,select:focus,textarea:focus{border-color:#38BDF8;box-shadow:0 0 20px rgba(56,189,248,.3)}
+textarea{min-height:180px;resize:vertical;font-family:'Courier New',monospace;line-height:1.7}
+.upload-box{border:2px dashed rgba(56,189,248,.4);border-radius:14px;padding:36px 20px;text-align:center;background:rgba(56,189,248,.03);transition:all .3s}
+.upload-box:hover{border-color:#38BDF8;background:rgba(56,189,248,.08)}
+.upload-box p{color:#94A3B8;margin-top:8px}
+.station-table{width:100%;border-collapse:collapse;background:rgba(0,0,0,.3);min-width:640px}
+.station-table th{background:rgba(56,189,248,.15);color:#38BDF8;padding:12px;text-align:left;font-size:.82rem;text-transform:uppercase;letter-spacing:1px}
+.station-table td{padding:10px 12px;border-bottom:1px solid rgba(56,189,248,.08);font-size:.92rem}
+.summary-card{text-align:center;padding:20px}
+.summary-label{font-size:.72rem;color:#94A3B8;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
+.summary-value{font-size:1.6rem;font-weight:800;color:#38BDF8;font-family:'Courier New',monospace}
+.summary-value.good{color:#10B981}.summary-value.bad{color:#F59E0B}
+.summary-unit{font-size:.75rem;color:#7C8CA3;margin-top:4px}
+.canvas-wrapper{background:rgba(5,10,20,.8);border-radius:16px;padding:16px;border:1px solid rgba(56,189,248,.2);margin-bottom:24px}
+canvas.chart-canvas{width:100%;height:auto;border-radius:10px;display:block}
+.formula-box{background:rgba(34,211,238,.05);border-left:4px solid #22D3EE;border-radius:10px;padding:20px;margin-bottom:24px;font-family:'Courier New',monospace;color:#38BDF8;line-height:1.8}
+.formula-label{font-family:'Times New Roman',serif;color:#94A3B8;font-size:.85rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+.info-box{background:rgba(34,211,238,.08);border-left:4px solid #22D3EE;border-radius:10px;padding:16px 20px;margin-bottom:20px;color:#CBD5E1;line-height:1.7}
+.info-box strong{color:#38BDF8}
+.info-box.warning{background:rgba(245,158,11,.08);border-left-color:#F59E0B}.info-box.warning strong{color:#F59E0B}
+.info-box.success{background:rgba(16,185,129,.08);border-left-color:#10B981}.info-box.success strong{color:#10B981}
+.liquid-btn{position:relative;display:inline-block;margin:5px;padding:14px 36px;border:none;border-radius:50px;background:linear-gradient(135deg,#38BDF8,#0EA5E9,#22D3EE);background-size:300% 300%;color:#0A1628;font-size:.9rem;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;transition:all .4s cubic-bezier(.23,1,.32,1);box-shadow:0 10px 30px rgba(56,189,248,.3),inset 0 2px 8px rgba(255,255,255,.3);animation:lf 4s ease infinite}
+@keyframes lf{50%{background-position:100% 50%}}
+.liquid-btn:hover{transform:translateY(-5px) scale(1.05);box-shadow:0 20px 50px rgba(56,189,248,.5)}
+.liquid-btn.red{background:linear-gradient(135deg,#EF4444,#DC2626);color:#fff}
+.small{padding:10px 24px;font-size:.82rem}
+.footer{text-align:center;padding:40px 20px 30px;color:#64748B;letter-spacing:1px;font-style:italic;border-top:1px solid rgba(56,189,248,.1);margin-top:50px}
+.footer span{color:#38BDF8;font-weight:600}
+#toast{position:fixed;left:50%;bottom:30px;transform:translate(-50%,100px);background:#0C4A7A;color:#fff;padding:12px 24px;border-radius:30px;z-index:10000;border:1px solid #38BDF8;transition:transform .4s}
+#toast.show{transform:translate(-50%,0)}
+::-webkit-scrollbar{width:8px}::-webkit-scrollbar-track{background:#0A1628}::-webkit-scrollbar-thumb{background:linear-gradient(180deg,#38BDF8,#22D3EE);border-radius:10px}
+@media (max-width:700px){.hero h1{font-size:2.2rem}}
+</style>
+</head>
+<body>
+<div class="cursor-dot" id="cursorDot"></div><div class="cursor-ring" id="cursorRing"></div>
+<canvas id="rainCanvas" class="fx"></canvas><canvas id="waveCanvas" class="fx"></canvas><canvas id="trailCanvas" class="fx"></canvas>
+<div class="bg"></div><div class="grid-overlay"></div><div id="toast"></div>
+
+<div class="page active" id="pageDashboard"><div class="container">
+  <div class="page-header"><h2>Design Flood Estimation</h2><button class="back-btn" onclick="location.href='index.html'">← Back</button></div>
+  <div class="hero">
+    <div class="badge">Module 5 — Return Period Analysis</div>
+    <h1>Design Flood Estimation</h1>
+    <div class="author">by Junaid Ali</div>
+    <p class="subtitle">Gumbel & Log-Pearson III Frequency Analysis</p>
+    <p class="desc">Fit an extreme value distribution to annual maximum rainfall, read design depths for any return period with 95% limits, and check the fit before using the numbers.</p>
+  </div>
+  <div class="section-title">What This Module Does</div>
+  <div class="features-grid">
+    <div class="feature-card"><h4>Return Period Analysis</h4><p>Design rainfall for any return period you list, from 2 up to 10,000 years.</p></div>
+    <div class="feature-card"><h4>Three Methods</h4><p>Gumbel (method of moments), Gumbel with Yn and Sn for your sample size, and Log-Pearson Type III.</p></div>
+    <div class="feature-card"><h4>Goodness of Fit</h4><p>Kolmogorov-Smirnov test, RMSE and the fitted return period of your biggest event.</p></div>
+    <div class="feature-card"><h4>Seven Graphs</h4><p>Frequency curve with 95% band, design rainfall bars, annual maxima vs design levels, histogram with fitted PDF, CDF with K-S band, Q-Q plot and a three-method comparison.</p></div>
+    <div class="feature-card"><h4>Excel Export</h4><p>Download every graph and all result tables in one Excel workbook, or the graphs alone as a PNG ZIP.</p></div>
+  </div>
+  <div style="text-align:center;margin-top:30px"><button class="liquid-btn" onclick="goToPage('pageInput')">Start Analysis →</button></div>
+  <div class="footer">Developed by <span>Junaid Ali</span> · Civil Engineering Research</div>
+</div></div>
+
+<div class="page" id="pageInput"><div class="container">
+  <div class="page-header"><h2>Design Flood Estimation — Input</h2><button class="back-btn" onclick="goToPage('pageDashboard')">← Back</button></div>
+  <div class="info-box"><strong>Data needed:</strong> one <strong>annual maximum</strong> (highest daily rainfall of the year) per year, as <strong>year, max_rainfall</strong>. At least 10 years are required and 30 or more are recommended. Values are depths in mm, so the output is design rainfall, not discharge.</div>
+  <div class="input-panel"><h3>Option 1: Upload CSV</h3>
+    <div class="upload-box" onclick="$('csvFile').click()"><div style="font-size:2.5rem">📁</div><p>Click to upload CSV file</p><p style="font-size:.8rem">Columns: year, max_rainfall</p>
+    <input type="file" id="csvFile" accept=".csv,.txt" style="display:none" onchange="handleCsv(event)"></div>
+    <div id="csvStatus" style="display:none;margin-top:15px;padding:12px;background:rgba(34,211,238,.1);border-left:3px solid #22D3EE;border-radius:8px;color:#22D3EE">✅ CSV loaded: <span id="csvFileName"></span></div>
+  </div>
+  <div class="input-panel"><h3>Option 2: Manual Entry</h3>
+    <textarea id="manualData" placeholder="1990, 245&#10;1991, 310&#10;1992, 185"></textarea>
+    <div style="margin-top:16px"><button class="liquid-btn small" onclick="demo()">Load Demo Data</button><button class="liquid-btn small red" onclick="$('manualData').value=''">Clear</button></div>
+  </div>
+  <div class="input-panel"><h3>Design Settings</h3>
+    <div class="input-row">
+      <div><label>Return Periods (years, comma separated)</label><input type="text" id="returnPeriods" value="2, 5, 10, 25, 50, 100"></div>
+      <div><label>Distribution Method</label><select id="distributionMethod"><option value="gumbel">Gumbel (method of moments)</option><option value="gumbelc">Gumbel (classical, Yn and Sn for n)</option><option value="lp3">Log-Pearson Type III</option></select></div>
+    </div>
+  </div>
+  <div style="text-align:center;margin-top:30px"><button class="liquid-btn" onclick="runAnalysis()">Run Analysis →</button></div>
+</div></div>
+
+<div class="page" id="pageResults"><div class="container">
+  <div class="page-header"><h2>Design Flood Estimation — Results</h2><button class="back-btn" onclick="goToPage('pageInput')">← Back</button></div>
+  <div id="verdict"></div><div class="summary-grid" id="summary"></div>
+  <div class="section-title">Design Rainfall Table</div>
+  <div class="input-panel" style="overflow-x:auto;padding:12px"><table class="station-table" id="designTable"><thead><tr><th>Return Period (T)</th><th>Exceedance Probability</th><th>Design Rainfall (mm)</th><th>Std Error (mm)</th><th>95% Limits (mm)</th></tr></thead><tbody></tbody></table></div>
+  <div class="section-title">Frequency Curve</div>
+  <div class="canvas-wrapper"><canvas id="freqCanvas" class="chart-canvas" width="1100" height="640"></canvas></div>
+  <div class="section-title">Design Rainfall by Return Period</div>
+  <div class="canvas-wrapper"><canvas id="designCanvas" class="chart-canvas" width="1100" height="560"></canvas></div>
+  <div class="section-title">Annual Maxima vs Design Levels</div>
+  <div class="canvas-wrapper"><canvas id="barCanvas" class="chart-canvas" width="1100" height="560"></canvas></div>
+  <div class="section-title">Distribution of Annual Maxima (Histogram + Fitted PDF)</div>
+  <div class="canvas-wrapper"><canvas id="histCanvas" class="chart-canvas" width="1100" height="560"></canvas></div>
+  <div class="section-title">Empirical vs Fitted CDF (Kolmogorov-Smirnov Check)</div>
+  <div class="canvas-wrapper"><canvas id="cdfCanvas" class="chart-canvas" width="1100" height="600"></canvas></div>
+  <div class="section-title">Q-Q Plot (Observed vs Fitted)</div>
+  <div class="canvas-wrapper"><canvas id="qqCanvas" class="chart-canvas" width="1000" height="700"></canvas></div>
+  <div class="section-title">Method Comparison</div>
+  <div class="canvas-wrapper"><canvas id="cmpCanvas" class="chart-canvas" width="1100" height="640"></canvas></div>
+  <div class="input-panel" style="overflow-x:auto;padding:12px"><table class="station-table" id="cmpTable"><thead></thead><tbody></tbody></table></div>
+  <div class="info-box" id="cmpNote"></div>
+  <div class="section-title">Methodology</div><div class="formula-box" id="formulaBox"></div>
+  <div class="section-title">Ranked Annual Data</div>
+  <div class="input-panel" style="overflow-x:auto;padding:12px"><table class="station-table" id="rankTable"><thead><tr><th>Rank (m)</th><th>Year</th><th>Observed (mm)</th><th>T = (n+1)/m</th><th>P = m/(n+1)</th><th>Fitted at this T (mm)</th></tr></thead><tbody></tbody></table></div>
+  <div style="text-align:center;margin-top:30px"><button class="liquid-btn" onclick="exportExcel()" style="background:linear-gradient(135deg,#10B981,#059669)">Export Excel (Graphs + Data)</button><button class="liquid-btn" onclick="exportGraphsZip()" style="background:linear-gradient(135deg,#A78BFA,#7C3AED)">Graphs (PNG ZIP)</button><button class="liquid-btn" onclick="saveReport()">Save Report (TXT)</button><button class="liquid-btn" onclick="saveCSV()">Save Results (CSV)</button><button class="liquid-btn" onclick="goToPage('pageDashboard')">Dashboard</button></div>
+  <div class="footer">Developed by <span>Junaid Ali</span> · Civil Engineering Research</div>
+</div></div>
+
+<script>
+const $=id=>document.getElementById(id);
+function msg(t){const e=$('toast');e.textContent=t;e.classList.add('show');clearTimeout(msg.t);msg.t=setTimeout(()=>e.classList.remove('show'),5000)}
+
+/* ===== Effects: cursor, water drops, rain, waves (one loop) ===== */
+const dot=$('cursorDot'),ring=$('cursorRing'),T=$('trailCanvas'),R=$('rainCanvas'),V=$('waveCanvas');
+const tc=T.getContext('2d'),rc=R.getContext('2d'),wc=V.getContext('2d');
+let parts=[],off=0;const drops=[];
+if(!matchMedia('(pointer:fine)').matches){dot.style.display=ring.style.display='none'}
+function rs(){for(const c of[T,R,V]){c.width=innerWidth;c.height=innerHeight}}
+rs();addEventListener('resize',rs);
+for(let i=0;i<120;i++)drops.push({x:Math.random()*innerWidth,y:Math.random()*innerHeight,l:10+Math.random()*20,s:2+Math.random()*3,o:.15+Math.random()*.3,w:.5+Math.random()*1.5});
+function burst(x,y,n,sp,sz){for(let i=0;i<n;i++)parts.push({x,y,vx:(Math.random()-.5)*sp,vy:(Math.random()-.5)*sp,life:1,size:Math.random()*sz+2,c:Math.random()>.5?'56,189,248':'34,211,238'})}
+addEventListener('pointermove',e=>{dot.style.left=ring.style.left=e.clientX+'px';dot.style.top=ring.style.top=e.clientY+'px';burst(e.clientX,e.clientY,2,3,4)});
+addEventListener('pointerdown',e=>{ring.classList.add('click');burst(e.clientX,e.clientY,40,12,7)});
+addEventListener('pointerup',()=>ring.classList.remove('click'));
+const HOV='button,input,select,textarea,.upload-box,.feature-card';
+document.addEventListener('pointerover',e=>{if(e.target.closest(HOV))ring.classList.add('hover')});
+document.addEventListener('pointerout',e=>{if(e.target.closest(HOV))ring.classList.remove('hover')});
+function wave(y,a,l,col,sp,op){wc.beginPath();wc.moveTo(0,V.height);for(let x=0;x<=V.width;x+=5)wc.lineTo(x,y+Math.sin((x+off*sp)/l)*a);wc.lineTo(V.width,V.height);wc.fillStyle=col;wc.globalAlpha=op;wc.fill();wc.globalAlpha=1}
+function loop(){
+  tc.clearRect(0,0,T.width,T.height);parts=parts.filter(p=>p.life>0&&p.size>.3);
+  for(const p of parts){p.x+=p.vx;p.y+=p.vy;p.vy+=.12;p.life-=.02;p.size*=.975;tc.beginPath();tc.arc(p.x,p.y,p.size,0,6.283);tc.fillStyle=`rgba(${p.c},${p.life*.8})`;tc.shadowColor=`rgba(${p.c},${p.life})`;tc.shadowBlur=12;tc.fill()}
+  tc.shadowBlur=0;rc.clearRect(0,0,R.width,R.height);rc.lineCap='round';
+  for(const d of drops){d.y+=d.s;if(d.y>R.height+20){d.y=-30;d.x=Math.random()*R.width}rc.strokeStyle=`rgba(56,189,248,${d.o})`;rc.lineWidth=d.w;rc.beginPath();rc.moveTo(d.x,d.y);rc.lineTo(d.x-1,d.y+d.l);rc.stroke()}
+  wc.clearRect(0,0,V.width,V.height);
+  wave(V.height-60,25,200,'#0EA5E9',1,.15);wave(V.height-40,30,250,'#38BDF8',.8,.12);wave(V.height-20,20,180,'#22D3EE',1.2,.1);
+  off++;requestAnimationFrame(loop)}
+loop();
+
+/* ===== Navigation ===== */
+let cur='pageDashboard',busy=false;
+function goToPage(id){if(id===cur||busy)return;busy=true;const c=$(cur),n=$(id);c.classList.remove('active');c.classList.add('exit-left');
+  setTimeout(()=>{c.classList.remove('exit-left');n.classList.add('active');n.scrollTop=0;cur=id;busy=false},500)}
+
+/* ===== Input ===== */
+function handleCsv(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();
+  r.onload=ev=>{$('manualData').value=ev.target.result.trim();$('csvStatus').style.display='block';$('csvFileName').textContent=f.name;e.target.value=''};r.readAsText(f)}
+function demo(){const v=[245,310,185,420,290,385,320,265,340,195,415,380,255,295,355,230,425,370,315,280,445,395,340,265,410,375,305,350,425,385];
+  $('manualData').value='year, max_rainfall\n'+v.map((x,i)=>`${1994+i}, ${x}`).join('\n')}
+function parseData(){
+  const t=$('manualData').value.replace(/^\uFEFF/,'').trim();if(!t){msg('Enter or upload data first.');return null}
+  const rows=[];let bad=0;
+  for(const l of t.split(/\r?\n/)){const s=l.trim();if(!s)continue;const p=s.split(/[,;\t\s]+/).map(x=>x.trim()).filter(x=>x!=='');
+    if(!/^\d{3,4}$/.test(p[0]))continue;const v=parseFloat(p[1]);
+    if(isNaN(v)||v<=0){bad++;continue}rows.push({year:parseInt(p[0]),v})}
+  if(new Set(rows.map(r=>r.year)).size!==rows.length){msg('Duplicate years found. Use one maximum per year.');return null}
+  if(bad)msg(bad+' row(s) skipped (blank or not above zero).');
+  return rows.sort((a,b)=>a.year-b.year)}
+
+/* ===== Stats ===== */
+const mean=a=>a.reduce((s,v)=>s+v,0)/a.length;
+const sd=a=>{const m=mean(a);return Math.sqrt(a.reduce((s,v)=>s+(v-m)**2,0)/(a.length-1))};
+const skew=a=>{const n=a.length,m=mean(a),s=sd(a);return n*a.reduce((t,v)=>t+(v-m)**3,0)/((n-1)*(n-2)*s**3)};
+const corr=(x,y)=>{const mx=mean(x),my=mean(y);let a=0,b=0,c=0;for(let i=0;i<x.length;i++){a+=(x[i]-mx)*(y[i]-my);b+=(x[i]-mx)**2;c+=(y[i]-my)**2}return a/Math.sqrt(b*c)};
+const EUL=0.5772156649,SQ=Math.PI/Math.sqrt(6);
+const yT=T=>-Math.log(Math.log(T/(T-1)));
+function zInv(p){const a=[-39.69683028665376,220.9460984245205,-275.9285104469687,138.357751867269,-30.66479806614716,2.506628277459239],
+  b=[-54.47609879822406,161.5858368580409,-155.6989798598866,66.80131188771972,-13.28068155288572],
+  c=[-0.007784894002430293,-0.3223964580411365,-2.400758277161838,-2.549732539343734,4.374664141464968,2.938163982698783],
+  d=[0.007784695709041462,0.3224671290700398,2.445134137142996,3.754408661907416],pl=.02425;let q,r;
+  if(p<pl){q=Math.sqrt(-2*Math.log(p));return(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5])/((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1)}
+  if(p>1-pl){q=Math.sqrt(-2*Math.log(1-p));return-(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5])/((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1)}
+  q=p-.5;r=q*q;return(((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q/(((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1)}
+function model(vals,kind){const n=vals.length;
+  if(kind==='lp3'){const L=vals.map(Math.log10),m=mean(L),s=sd(L),G=skew(L);
+    const K=T=>{const z=zInv(1-1/T);return Math.abs(G)<1e-6?z:(2/G)*((1+G*z/6-G*G/36)**3-1)};
+    return{kind,name:'Log-Pearson Type III',m,s,G,K,q:T=>10**(m+K(T)*s),se:null}}
+  let yn=EUL,Sn=SQ;
+  if(kind==='gumbelc'){const y=Array.from({length:n},(_,i)=>-Math.log(-Math.log((i+1)/(n+1))));yn=mean(y);Sn=Math.sqrt(y.reduce((t,v)=>t+(v-yn)**2,0)/n)}
+  const m=mean(vals),s=sd(vals),K=T=>(yT(T)-yn)/Sn;
+  return{kind,name:kind==='gumbelc'?'Gumbel (classical, Yn and Sn)':'Gumbel (method of moments)',m,s,yn,Sn,K,q:T=>m+K(T)*s,se:T=>{const k=K(T);return s*Math.sqrt((1+1.1396*k+1.1*k*k)/n)}}}
+function probOf(M,x){let lo=1e-6,hi=1-1e-6;for(let i=0;i<60;i++){const mid=(lo+hi)/2;if(M.q(1/(1-mid))<x)lo=mid;else hi=mid}return(lo+hi)/2}
+function gof(M,vals){const x=[...vals].sort((a,b)=>a-b),n=x.length;let D=0;
+  x.forEach((v,i)=>{const F=probOf(M,v);D=Math.max(D,(i+1)/n-F,F-i/n)});
+  const est=x.map((_,i)=>M.q((n+1)/(n-i)));
+  return{D,crit:1.36/Math.sqrt(n),rmse:Math.sqrt(mean(est.map((e,i)=>(e-x[i])**2))),r:corr(x,est)}}
+
+/* ===== Run ===== */
+let A=null;
+function runAnalysis(){
+  const rows=parseData();if(!rows)return;
+  if(rows.length<10){msg('At least 10 years of annual maxima are needed.');return}
+  const kind=$('distributionMethod').value,vals=rows.map(r=>r.v),n=vals.length;
+  const periods=[...new Set($('returnPeriods').value.split(/[,;\s]+/).map(parseFloat).filter(p=>!isNaN(p)&&p>1&&p<=10000))].sort((a,b)=>a-b).slice(0,12);
+  if(!periods.length){msg('Enter at least one return period above 1 year, for example 2, 10, 100.');return}
+  const M=model(vals,kind),g=gof(M,vals);
+  const all=['gumbel','gumbelc','lp3'].map(k=>{const mm=k===kind?M:model(vals,k);return{kind:k,M:mm,g:k===kind?g:gof(mm,vals),q:periods.map(T=>mm.q(T))}});
+  const design=periods.map(T=>({T,x:M.q(T),se:M.se?M.se(T):null}));
+  const ranked=[...rows].sort((a,b)=>b.v-a.v).map((r,i)=>({rank:i+1,year:r.year,v:r.v,T:(n+1)/(i+1),P:(i+1)/(n+1),fit:M.q((n+1)/(i+1))}));
+  const mx=ranked[0],Tfit=1/(1-probOf(M,mx.v)),ok=g.D<g.crit;
+  A={rows,vals,n,M,kind,design,ranked,g,mx,Tfit,all,periods,m:mean(vals),s:sd(vals),sk:skew(vals)};
+  $('verdict').innerHTML=`<div class="info-box ${ok?'success':'warning'}" style="font-size:1rem;padding:22px"><div style="font-size:1.5rem">${ok?'✅':'⚠️'}</div>${M.name} fitted to <strong>${n} years</strong> of annual maxima. Kolmogorov-Smirnov D = ${g.D.toFixed(3)} against ${g.crit.toFixed(3)} (5% level), so the fit is <strong>${ok?'not rejected':'rejected: try another distribution'}</strong>. Your highest event, <strong>${mx.v} mm (${mx.year})</strong>, plots at T = ${(n+1)} years (Weibull) and ${Tfit.toFixed(1)} years on the fitted curve.</div>`;
+  const ed=design.find(d=>d.T===100)||design[design.length-1];
+  $('summary').innerHTML=[['Mean Annual Max',A.m.toFixed(1)+' mm'],['Std Deviation',A.s.toFixed(1)+' mm'],['Skewness (data)',A.sk.toFixed(2)],['Years of Record',n],['Fit RMSE',g.rmse.toFixed(1)+' mm'],['K-S D / Critical',g.D.toFixed(3)+' / '+g.crit.toFixed(3)],[ed.T+'-Year Rainfall',ed.x.toFixed(0)+' mm']]
+   .map((c,i)=>`<div class="summary-card"><div class="summary-label">${c[0]}</div><div class="summary-value ${i===6?'bad':''}">${c[1]}</div></div>`).join('');
+  $('designTable').tBodies[0].innerHTML=design.map(d=>`<tr><td style="color:#38BDF8;font-weight:700">${d.T} years</td><td>1 in ${d.T} (${(100/d.T).toFixed(2)}%)</td><td style="color:#22D3EE;font-weight:700">${d.x.toFixed(1)}</td><td>${d.se===null?'—':'± '+d.se.toFixed(1)}</td><td>${d.se===null?'—':(d.x-1.96*d.se).toFixed(1)+' to '+(d.x+1.96*d.se).toFixed(1)}</td></tr>`).join('');
+  $('rankTable').tBodies[0].innerHTML=ranked.map(r=>`<tr><td>${r.rank}</td><td>${r.year}</td><td style="color:${r.rank===1?'#F59E0B':'#22D3EE'};font-weight:600">${r.v.toFixed(1)}</td><td>${r.T.toFixed(2)} years</td><td>${(r.P*100).toFixed(2)}%</td><td>${r.fit.toFixed(1)}</td></tr>`).join('');
+  const T=ed.T,K=M.K(T);let f;
+  if(kind==='lp3')f=`<div class="formula-label">Log-Pearson Type III</div>log₁₀ X<sub>T</sub> = x̄<sub>L</sub> + K<sub>T</sub> × s<sub>L</sub><br>x̄<sub>L</sub> = ${M.m.toFixed(4)}, s<sub>L</sub> = ${M.s.toFixed(4)}, G (skew of logs) = ${M.G.toFixed(3)}<br>K<sub>T</sub> from skew and T (Wilson-Hilferty): (2/G)[(1 + G·z/6 − G²/36)³ − 1], z = standard normal variate for 1 − 1/T<br><br><div class="formula-label">Example: T = ${T}</div>z = ${zInv(1-1/T).toFixed(4)}, K = ${K.toFixed(4)}<br>log₁₀ X = ${M.m.toFixed(4)} + ${K.toFixed(4)} × ${M.s.toFixed(4)} = ${(M.m+K*M.s).toFixed(4)}<br>X<sub>${T}</sub> = <strong>${ed.x.toFixed(2)} mm</strong><br><br>Note: sample skew from a short record is unreliable. Standard error and limits are not computed for this method.`;
+  else f=`<div class="formula-label">${M.name}</div>X<sub>T</sub> = x̄ + K<sub>T</sub> × s<br>K<sub>T</sub> = (y<sub>T</sub> − ȳ<sub>n</sub>) / S<sub>n</sub>, y<sub>T</sub> = −ln[ln(T/(T−1))]<br>x̄ = ${M.m.toFixed(2)} mm, s = ${M.s.toFixed(2)} mm (n − 1), n = ${n}<br>ȳ<sub>n</sub> = ${M.yn.toFixed(4)}, S<sub>n</sub> = ${M.Sn.toFixed(4)} ${kind==='gumbel'?'(Euler constant 0.5772 and π/√6, equal to K = −(√6/π)[0.5772 + ln ln(T/(T−1))])':'(from Gumbel plotting positions i/(n+1) for this n)'}<br><br><div class="formula-label">Example: T = ${T}</div>y = ${yT(T).toFixed(4)}, K = ${K.toFixed(4)}<br>X<sub>${T}</sub> = ${M.m.toFixed(2)} + ${K.toFixed(4)} × ${M.s.toFixed(2)} = <strong>${ed.x.toFixed(2)} mm</strong><br><br><div class="formula-label">Standard error and 95% limits</div>S<sub>e</sub> = (s/√n) × √(1 + 1.1396K + 1.1K²), limits X<sub>T</sub> ± 1.96 S<sub>e</sub>`;
+  f+=`<br><br><div class="formula-label">Plotting positions and fit</div>Weibull: T = (n+1)/m, P = m/(n+1). K-S critical value 1.36/√n is approximate because parameters are estimated from the same data, which makes the test lenient.`;
+  $('formulaBox').innerHTML=f;
+  fillCompare();goToPage('pageResults');setTimeout(drawAll,600)}
+
+/* ===== Charts ===== */
+function nice(r){const p=10**Math.floor(Math.log10(r)),f=r/p;return(f<1.5?1:f<3?2:f<7?5:10)*p}
+function prep(id){const cv=$(id);if(!cv.dataset.w){cv.dataset.w=cv.width;cv.dataset.h=cv.height}
+  const W=+cv.dataset.w,H=+cv.dataset.h,d=Math.min(window.devicePixelRatio||1,2);cv.width=W*d;cv.height=H*d;
+  const c=cv.getContext('2d');c.setTransform(d,0,0,d,0,0);return{c,W,H}}
+function rr(c,x,y,w,h,r){c.beginPath();if(c.roundRect)c.roundRect(x,y,w,h,r);else c.rect(x,y,w,h)}
+function frame(id,title,xl,yl,x0,x1,y0,y1,xt){
+  const{c,W,H}=prep(id),L=100,Rt=40,Tp=70,B=80;
+  const g=c.createLinearGradient(0,0,W,H);g.addColorStop(0,'#050a14');g.addColorStop(1,'#0a1423');c.fillStyle=g;c.fillRect(0,0,W,H);
+  const sy=nice((y1-y0)/6||1);y0=Math.floor(y0/sy+1e-9)*sy;y1=Math.ceil(y1/sy-1e-9)*sy;let tk=xt,sx=1;
+  if(!tk){sx=nice((x1-x0)/6||1);x0=Math.floor(x0/sx+1e-9)*sx;x1=Math.ceil(x1/sx-1e-9)*sx;tk=[];const nx=Math.round((x1-x0)/sx);
+    for(let k=0;k<=nx;k++){const v=x0+k*sx;tk.push({v,l:sx<1?v.toFixed(2):Math.round(v)})}}
+  const px=x=>L+(x-x0)/(x1-x0)*(W-L-Rt),py=y=>H-B-(y-y0)/(y1-y0)*(H-Tp-B);
+  c.font='14px Times New Roman';c.lineWidth=1;
+  for(const t of tk){c.strokeStyle='rgba(56,189,248,.09)';c.beginPath();c.moveTo(px(t.v),py(y0));c.lineTo(px(t.v),py(y1));c.stroke();c.fillStyle='#94A3B8';c.textAlign='center';c.fillText(t.l,px(t.v),H-B+22)}
+  const ny=Math.round((y1-y0)/sy);
+  for(let k=0;k<=ny;k++){const v=y0+k*sy;c.strokeStyle='rgba(56,189,248,.09)';c.beginPath();c.moveTo(px(x0),py(v));c.lineTo(px(x1),py(v));c.stroke();c.fillStyle='#94A3B8';c.textAlign='right';c.fillText(sy<1?v.toFixed(2):Math.round(v),L-10,py(v)+5)}
+  c.strokeStyle='rgba(56,189,248,.5)';c.lineWidth=2;c.beginPath();c.moveTo(px(x0),py(y1));c.lineTo(px(x0),py(y0));c.lineTo(px(x1),py(y0));c.stroke();
+  c.fillStyle='#94A3B8';c.textAlign='center';c.font='15px Times New Roman';c.fillText(xl,(L+W-Rt)/2,H-22);
+  c.save();c.translate(28,(Tp+H-B)/2);c.rotate(-Math.PI/2);c.fillText(yl,0,0);c.restore();
+  c.fillStyle='#38BDF8';c.font='bold 21px Times New Roman';c.fillText(title,W/2,34);
+  return{c,px,py,L,Tp,W,H,Rt,B,x0,x1,y0,y1}}
+function legend(c,x,y,it){c.font='14px Times New Roman';const w=Math.max(...it.map(q=>c.measureText(q[1]).width))+56;
+  c.fillStyle='rgba(5,10,20,.78)';c.fillRect(x-20,y-20,w,it.length*24+12);c.strokeStyle='rgba(56,189,248,.2)';c.lineWidth=1;c.strokeRect(x-20,y-20,w,it.length*24+12);
+  c.textAlign='left';it.forEach((q,k)=>{c.fillStyle=q[0];if(q[2])c.fillRect(x-8,y+k*24-2,16,4);else{c.beginPath();c.arc(x,y+k*24,6,0,6.283);c.fill()}c.fillStyle='#CBD5E1';c.fillText(q[1],x+16,y+k*24+5)})}
+
+/* Gumbel reduced-variate axis: always wide enough for every plotted point */
+function gAxis(){const{n,design}=A,Tmax=Math.max(...design.map(d=>d.T),100,n+1),x0=Math.min(-1.45,yT((n+1)/n)-.15),x1=yT(Tmax)+.3;
+  const xt=[1.25,1.5,2,5,10,25,50,100,200,500,1000,5000,10000].filter(T=>yT(T)>=x0&&yT(T)<=x1).map(T=>({v:yT(T),l:T}));return{x0,x1,xt}}
+function curveOf(Mx,x0,x1,withSe){const o=[];for(let y=x0;y<=x1+1e-9;y+=.05){const T=1/(1-Math.exp(-Math.exp(-y))),q=Mx.q(T);
+  if(isFinite(q)){const e=withSe&&Mx.se?1.96*Mx.se(T):0;o.push({y,q,lo:q-e,hi:q+e})}}return o}
+
+/* 1. Frequency curve */
+function drawFreq(){
+  if(!A)return;const{vals,M,design,ranked}=A,{x0,x1,xt}=gAxis(),cur=curveOf(M,x0,x1,true);
+  const lo=Math.min(...vals,...cur.map(p=>p.lo)),hi=Math.max(...vals,...cur.map(p=>p.hi));
+  const{c,px,py,L,Tp}=frame('freqCanvas','Frequency Curve — '+M.name,'Return period T (years), on Gumbel reduced-variate scale','Annual maximum rainfall (mm)',x0,x1,Math.max(0,lo*.9),hi*1.05,xt);
+  if(M.se){c.beginPath();cur.forEach((p,i)=>i?c.lineTo(px(p.y),py(p.hi)):c.moveTo(px(p.y),py(p.hi)));for(let i=cur.length-1;i>=0;i--)c.lineTo(px(cur[i].y),py(cur[i].lo));c.closePath();c.fillStyle='rgba(16,185,129,.12)';c.fill()}
+  c.save();c.strokeStyle='#10B981';c.lineWidth=3;c.shadowColor='#10B981';c.shadowBlur=14;c.beginPath();cur.forEach((p,i)=>i?c.lineTo(px(p.y),py(p.q)):c.moveTo(px(p.y),py(p.q)));c.stroke();c.restore();
+  ranked.forEach(r=>{c.beginPath();c.arc(px(yT(r.T)),py(r.v),r.rank===1?8:5,0,6.283);c.fillStyle=r.rank===1?'#F59E0B':'#38BDF8';c.shadowColor=c.fillStyle;c.shadowBlur=10;c.fill();c.shadowBlur=0});
+  design.forEach(d=>{const x=px(yT(d.T)),y=py(d.x);c.beginPath();c.arc(x,y,6,0,6.283);c.fillStyle='#22D3EE';c.fill();c.fillStyle='#22D3EE';c.font='bold 12px Times New Roman';c.textAlign='center';c.fillText(d.x.toFixed(0),x,y-14)});
+  legend(c,L+30,Tp+30,[['#38BDF8','Observed (Weibull plotting position)'],['#F59E0B','Highest recorded'],['#10B981','Fitted curve',1],['#22D3EE','Design values']].concat(M.se?[['rgba(16,185,129,.5)','95% confidence band',1]]:[]))}
+
+/* 2. Design rainfall by return period (bars with 95% limits) */
+function drawDesign(){
+  if(!A)return;const{design,M}=A,k=design.length,hi=Math.max(...design.map(d=>d.se===null?d.x:d.x+1.96*d.se))*1.15;
+  const{c,px,py,L,Tp}=frame('designCanvas','Design Rainfall by Return Period — '+M.name,'Return period','Design rainfall (mm)',-.5,k-.5,0,hi,design.map((d,i)=>({v:i,l:d.T+' yr'})));
+  const bw=Math.min(110,(px(1)-px(0))*.5),base=py(0);
+  design.forEach((d,i)=>{const x=px(i),g=c.createLinearGradient(0,py(d.x),0,base);g.addColorStop(0,'#22D3EE');g.addColorStop(1,'#0369A1');
+    c.fillStyle=g;rr(c,x-bw/2,py(d.x),bw,base-py(d.x),4);c.fill();let top=py(d.x);
+    if(d.se!==null){const a=py(d.x-1.96*d.se),b=py(d.x+1.96*d.se);c.strokeStyle='#F59E0B';c.lineWidth=2.5;c.beginPath();c.moveTo(x,a);c.lineTo(x,b);c.moveTo(x-9,a);c.lineTo(x+9,a);c.moveTo(x-9,b);c.lineTo(x+9,b);c.stroke();top=b}
+    c.fillStyle='#E2E8F0';c.font='bold 14px Times New Roman';c.textAlign='center';c.fillText(d.x.toFixed(0)+' mm',x,top-10)});
+  legend(c,L+30,Tp+30,[['#22D3EE','Design rainfall (T-year)',1]].concat(M.se?[['#F59E0B','95% limits (± 1.96 Se)',1]]:[['#94A3B8','95% limits not available for this method']]))}
+
+/* 3. Annual maxima vs design levels */
+function drawBars(){
+  if(!A)return;const{rows,design}=A,k=design.length-1;
+  const pick=design.length<=4?design:[...new Set([0,Math.round(k/3),Math.round(2*k/3),k])].map(i=>design[i]);
+  const hi=Math.max(...rows.map(r=>r.v),...pick.map(d=>d.x))*1.1;
+  const{c,px,py,L,Tp,W,Rt}=frame('barCanvas','Annual Maxima vs Design Rainfall Levels','Year','Annual maximum rainfall (mm)',rows[0].year-1,rows[rows.length-1].year+1,0,hi);
+  const bw=Math.max(3,(px(rows[0].year+1)-px(rows[0].year))*.7),base=py(0);
+  rows.forEach(r=>{const g=c.createLinearGradient(0,py(r.v),0,base);g.addColorStop(0,'#7DD3FC');g.addColorStop(1,'#0369A1');c.fillStyle=g;rr(c,px(r.year)-bw/2,py(r.v),bw,base-py(r.v),3);c.fill()});
+  const col=['#F59E0B','#22D3EE','#EF4444','#A78BFA'];
+  pick.forEach((d,i)=>{c.save();c.strokeStyle=col[i];c.lineWidth=2;c.setLineDash([8,6]);c.beginPath();c.moveTo(L,py(d.x));c.lineTo(W-Rt,py(d.x));c.stroke();c.restore();
+    c.fillStyle=col[i];c.font='bold 13px Times New Roman';c.textAlign='right';c.fillText(`T = ${d.T} yr: ${d.x.toFixed(0)} mm`,W-Rt-6,py(d.x)-6)})}
+
+/* 4. Histogram + fitted PDF (PDF = numerical derivative of the fitted CDF, works for every method) */
+function drawHist(){
+  if(!A)return;const{vals,n,M}=A,mn=Math.min(...vals),mxv=Math.max(...vals);
+  const k=Math.max(5,Math.min(12,Math.ceil(Math.log2(n)+1))),w=nice((mxv-mn)/k||1),b0=Math.floor(mn/w+1e-9)*w,nb=Math.floor((mxv-b0)/w+1e-9)+1;
+  const counts=Array(nb).fill(0);vals.forEach(v=>counts[Math.min(nb-1,Math.floor((v-b0)/w+1e-9))]++);
+  const xa=Math.max(0,b0-w),xb=b0+nb*w+w,hh=w/40,N=200,pts=[];
+  for(let i=0;i<=N;i++){const x=xa+(xb-xa)*i/N;if(x-hh<=0){pts.push({x,y:0});continue}pts.push({x,y:n*w*(probOf(M,x+hh)-probOf(M,x-hh))/(2*hh)})}
+  const ymax=Math.max(...counts,...pts.map(p=>p.y))*1.18;
+  const{c,px,py,L,Tp}=frame('histCanvas','Distribution of Annual Maxima — Histogram and Fitted '+M.name,'Annual maximum rainfall (mm)','Number of years per class',xa,xb,0,ymax);
+  const base=py(0);
+  counts.forEach((cn,i)=>{const x1=px(b0+i*w)+2,x2=px(b0+(i+1)*w)-2,y=py(cn);if(!cn)return;
+    const g=c.createLinearGradient(0,y,0,base);g.addColorStop(0,'rgba(125,211,252,.85)');g.addColorStop(1,'rgba(3,105,161,.85)');c.fillStyle=g;rr(c,x1,y,x2-x1,base-y,3);c.fill();
+    c.fillStyle='#E2E8F0';c.font='bold 14px Times New Roman';c.textAlign='center';c.fillText(cn,(x1+x2)/2,y-8)});
+  c.save();c.strokeStyle='#10B981';c.lineWidth=3;c.shadowColor='#10B981';c.shadowBlur=14;c.beginPath();pts.forEach((p,i)=>i?c.lineTo(px(p.x),py(p.y)):c.moveTo(px(p.x),py(p.y)));c.stroke();c.restore();
+  legend(c,L+30,Tp+30,[['#38BDF8','Observed frequency (class width '+w+' mm)',1],['#10B981','Fitted distribution (expected frequency)',1]])}
+
+/* 5. Empirical vs fitted CDF with the K-S band and maximum deviation */
+function drawCdf(){
+  if(!A)return;const{vals,n,M,g}=A,x=[...vals].sort((a,b)=>a-b),span=x[n-1]-x[0]||1;
+  const{c,px,py,L,Tp,x0,x1}=frame('cdfCanvas','Empirical vs Fitted CDF — Kolmogorov-Smirnov Check','Annual maximum rainfall (mm)','Cumulative probability (%)',Math.max(0,x[0]-span*.18),x[n-1]+span*.18,0,100);
+  const N=240,xs=Array.from({length:N+1},(_,i)=>x0+(x1-x0)*i/N),F=xs.map(t=>t>0?probOf(M,t)*100:0),cr=g.crit*100;
+  c.beginPath();xs.forEach((t,i)=>{const y=py(Math.min(100,F[i]+cr));i?c.lineTo(px(t),y):c.moveTo(px(t),y)});
+  for(let i=N;i>=0;i--)c.lineTo(px(xs[i]),py(Math.max(0,F[i]-cr)));c.closePath();c.fillStyle='rgba(245,158,11,.10)';c.fill();
+  c.save();c.strokeStyle='#10B981';c.lineWidth=3;c.shadowColor='#10B981';c.shadowBlur=12;c.beginPath();xs.forEach((t,i)=>i?c.lineTo(px(t),py(F[i])):c.moveTo(px(t),py(F[i])));c.stroke();c.restore();
+  c.strokeStyle='#38BDF8';c.lineWidth=2.5;c.beginPath();c.moveTo(px(x0),py(0));
+  x.forEach((v,i)=>{c.lineTo(px(v),py(100*i/n));c.lineTo(px(v),py(100*(i+1)/n))});c.lineTo(px(x1),py(100));c.stroke();
+  let best={d:-1};x.forEach((v,i)=>{const f=probOf(M,v),d1=(i+1)/n-f,d2=f-i/n,d=Math.max(d1,d2);if(d>best.d)best={d,v,f,e:d1>=d2?(i+1)/n:i/n}});
+  c.strokeStyle='#EF4444';c.lineWidth=3.5;c.beginPath();c.moveTo(px(best.v),py(best.f*100));c.lineTo(px(best.v),py(best.e*100));c.stroke();
+  c.fillStyle='#EF4444';c.beginPath();c.arc(px(best.v),py(best.e*100),5,0,6.283);c.fill();
+  legend(c,L+30,Tp+30,[['#38BDF8','Empirical CDF (observed, steps)',1],['#10B981','Fitted CDF — '+M.name,1],['rgba(245,158,11,.8)','K-S 5% band (± '+g.crit.toFixed(3)+')',1],['#EF4444','Maximum deviation D = '+g.D.toFixed(3),1]])}
+
+/* 6. Q-Q plot: observed vs fitted value at the same Weibull return period */
+function drawQQ(){
+  if(!A)return;const{ranked,g,M}=A,all=ranked.flatMap(r=>[r.v,r.fit]).filter(isFinite),lo=Math.max(0,Math.min(...all)*.93),hi=Math.max(...all)*1.05;
+  const{c,px,py,L,Tp,x0,x1,y0,y1}=frame('qqCanvas','Q-Q Plot — Observed vs Fitted ('+M.name+')','Fitted value at the same return period (mm)','Observed annual maximum (mm)',lo,hi,lo,hi);
+  const a=Math.max(x0,y0),b=Math.min(x1,y1);
+  c.save();c.strokeStyle='#10B981';c.lineWidth=2.5;c.setLineDash([10,6]);c.beginPath();c.moveTo(px(a),py(a));c.lineTo(px(b),py(b));c.stroke();c.restore();
+  ranked.forEach(r=>{if(!isFinite(r.fit))return;c.beginPath();c.arc(px(r.fit),py(r.v),r.rank===1?8:5.5,0,6.283);c.fillStyle=r.rank===1?'#F59E0B':'#38BDF8';c.shadowColor=c.fillStyle;c.shadowBlur=10;c.fill();c.shadowBlur=0});
+  legend(c,L+30,Tp+30,[['#38BDF8','Observed vs fitted'],['#F59E0B','Highest recorded'],['#10B981','1 : 1 line (perfect fit)',1],['#94A3B8','r = '+g.r.toFixed(3)+',  RMSE = '+g.rmse.toFixed(1)+' mm',1]])}
+
+/* 7. Method comparison: all three distributions on the same probability paper */
+const MCOL={gumbel:'#10B981',gumbelc:'#A78BFA',lp3:'#F43F5E'};
+function drawCmp(){
+  if(!A)return;const{all,vals,ranked,kind}=A,{x0,x1,xt}=gAxis(),curves=all.map(m=>({m,cur:curveOf(m.M,x0,x1,false)}));
+  const top=Math.max(...vals,...all.flatMap(m=>m.q))*1.12,lo=Math.min(...vals)*.85;
+  const{c,px,py,L,Tp,W,H,Rt,B}=frame('cmpCanvas','Method Comparison — Fitted Frequency Curves','Return period T (years), on Gumbel reduced-variate scale','Annual maximum rainfall (mm)',x0,x1,Math.max(0,lo),top,xt);
+  c.save();c.beginPath();c.rect(L,Tp,W-L-Rt,H-B-Tp);c.clip();
+  curves.forEach(({m,cur})=>{const sel=m.kind===kind;c.strokeStyle=MCOL[m.kind];c.lineWidth=sel?4:2.5;c.setLineDash(sel?[]:[9,5]);c.shadowColor=MCOL[m.kind];c.shadowBlur=sel?12:0;
+    c.beginPath();cur.forEach((p,i)=>i?c.lineTo(px(p.y),py(p.q)):c.moveTo(px(p.y),py(p.q)));c.stroke();c.setLineDash([]);c.shadowBlur=0});
+  c.restore();
+  ranked.forEach(r=>{c.beginPath();c.arc(px(yT(r.T)),py(r.v),r.rank===1?8:5,0,6.283);c.fillStyle=r.rank===1?'#F59E0B':'#38BDF8';c.shadowColor=c.fillStyle;c.shadowBlur=10;c.fill();c.shadowBlur=0});
+  legend(c,L+30,Tp+30,[['#38BDF8','Observed (Weibull plotting position)'],['#F59E0B','Highest recorded']].concat(all.map(m=>[MCOL[m.kind],m.M.name+(m.kind===kind?'  (selected)':''),1])))}
+
+function drawAll(){drawFreq();drawDesign();drawBars();drawHist();drawCdf();drawQQ();drawCmp()}
+
+/* Method comparison table */
+function fillCompare(){
+  const{all,periods,kind}=A,best=all.reduce((b,m)=>m.g.rmse<b.g.rmse?m:b,all[0]);
+  $('cmpTable').tHead.innerHTML='<tr><th>Method</th><th>K-S D</th><th>RMSE (mm)</th><th>r</th>'+periods.map(T=>`<th>T = ${T} (mm)</th>`).join('')+'</tr>';
+  $('cmpTable').tBodies[0].innerHTML=all.map(m=>{const sel=m.kind===kind;
+    return`<tr><td style="color:${MCOL[m.kind]};font-weight:700">${m.M.name}${sel?' (selected)':''}${m===best?' ★':''}</td><td>${m.g.D.toFixed(3)}</td><td>${m.g.rmse.toFixed(1)}</td><td>${m.g.r.toFixed(3)}</td>`+m.q.map(q=>`<td${sel?' style="color:#22D3EE;font-weight:700"':''}>${q.toFixed(1)}</td>`).join('')+'</tr>'}).join('');
+  const spread=periods.map((T,i)=>{const q=all.map(m=>m.q[i]);return{T,pct:(Math.max(...q)-Math.min(...q))/Math.min(...q)*100}}),w=spread.reduce((a,b)=>b.pct>a.pct?b:a);
+  $('cmpNote').innerHTML=`<strong>★</strong> marks the lowest RMSE between fitted and observed values. The three methods differ by up to <strong>${w.pct.toFixed(0)}%</strong> at T = ${w.T} years, so the choice of distribution is usually a bigger source of uncertainty than the sampling error shown by the 95% limits. Use the K-S result, the Q-Q plot and engineering judgement together, and do not pick a method only because it gives the lowest or highest design value.`}
+
+/* ===== Save ===== */
+function dl(txt,type,name){const u=URL.createObjectURL(new Blob([txt],{type})),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000)}
+function saveReport(){if(!A)return;const l='='.repeat(45),g=A.g;
+  let o=`${l}\n  DESIGN RAINFALL / FLOOD FREQUENCY REPORT\n  ${A.M.name}\n${l}\n\nGenerated: ${new Date().toLocaleString()}\nYears of record: ${A.n}\nMean: ${A.m.toFixed(2)} mm\nStd dev: ${A.s.toFixed(2)} mm\nSkewness: ${A.sk.toFixed(3)}\nK-S D: ${g.D.toFixed(4)} (critical ${g.crit.toFixed(4)})\nRMSE: ${g.rmse.toFixed(2)} mm\n\nT (years) | Rainfall (mm) | Std error | 95% limits\n`;
+  A.design.forEach(d=>o+=`${d.T} | ${d.x.toFixed(2)} | ${d.se===null?'-':d.se.toFixed(2)} | ${d.se===null?'-':(d.x-1.96*d.se).toFixed(1)+' to '+(d.x+1.96*d.se).toFixed(1)}\n`);
+  o+='\nMETHOD COMPARISON\nMethod | K-S D | RMSE (mm) | r | '+A.periods.map(T=>'T='+T).join(' | ')+'\n';
+  A.all.forEach(m=>o+=`${m.M.name} | ${m.g.D.toFixed(3)} | ${m.g.rmse.toFixed(2)} | ${m.g.r.toFixed(3)} | ${m.q.map(q=>q.toFixed(1)).join(' | ')}\n`);
+  o+='\nRank | Year | Observed | T (Weibull) | Fitted\n';A.ranked.forEach(r=>o+=`${r.rank} | ${r.year} | ${r.v.toFixed(1)} | ${r.T.toFixed(2)} | ${r.fit.toFixed(1)}\n`);
+  o+='\nDeveloped by Junaid Ali · Civil Engineering Research\n';dl(o,'text/plain','design_rainfall_report_'+Date.now()+'.txt');msg('Report saved.')}
+function saveCSV(){if(!A)return;let o='return_period,design_rainfall_mm,std_error_mm,lower95_mm,upper95_mm\n';
+  A.design.forEach(d=>o+=`${d.T},${d.x.toFixed(2)},${d.se===null?'':d.se.toFixed(2)},${d.se===null?'':(d.x-1.96*d.se).toFixed(2)},${d.se===null?'':(d.x+1.96*d.se).toFixed(2)}\n`);
+  o+='\nmethod,ks_D,rmse_mm,r,'+A.periods.map(T=>'T'+T+'_mm').join(',')+'\n';
+  A.all.forEach(m=>o+=`"${m.M.name}",${m.g.D.toFixed(4)},${m.g.rmse.toFixed(2)},${m.g.r.toFixed(4)},${m.q.map(q=>q.toFixed(2)).join(',')}\n`);
+  o+='\nrank,year,observed_mm,T_weibull,fitted_mm\n';A.ranked.forEach(r=>o+=`${r.rank},${r.year},${r.v},${r.T.toFixed(3)},${r.fit.toFixed(2)}\n`);
+  dl(o,'text/csv','design_rainfall_'+Date.now()+'.csv');msg('CSV saved.')}
+
+/* ═══ EXPORT ENGINE (no external libraries): ZIP + XLSX writer with embedded chart images ═══ */
+const _crcTable = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(buf) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < buf.length; i++) c = _crcTable[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+/* files: [{name, data:Uint8Array}] → Uint8Array (ZIP, stored/uncompressed) */
+function makeZip(files) {
+  const enc = new TextEncoder();
+  const parts = [], central = [];
+  let offset = 0;
+  files.forEach(f => {
+    const name = enc.encode(f.name);
+    const crc = crc32(f.data), size = f.data.length;
+
+    const lh = new Uint8Array(30 + name.length);
+    const dv = new DataView(lh.buffer);
+    dv.setUint32(0, 0x04034b50, true);
+    dv.setUint16(4, 20, true);
+    dv.setUint16(6, 0x0800, true);      // UTF-8 names
+    dv.setUint16(8, 0, true);           // method: stored
+    dv.setUint16(10, 0, true);          // time
+    dv.setUint16(12, 0x21, true);       // date 1980-01-01
+    dv.setUint32(14, crc, true);
+    dv.setUint32(18, size, true);
+    dv.setUint32(22, size, true);
+    dv.setUint16(26, name.length, true);
+    dv.setUint16(28, 0, true);
+    lh.set(name, 30);
+    parts.push(lh, f.data);
+
+    const ch = new Uint8Array(46 + name.length);
+    const cv = new DataView(ch.buffer);
+    cv.setUint32(0, 0x02014b50, true);
+    cv.setUint16(4, 20, true);
+    cv.setUint16(6, 20, true);
+    cv.setUint16(8, 0x0800, true);
+    cv.setUint16(10, 0, true);
+    cv.setUint16(12, 0, true);
+    cv.setUint16(14, 0x21, true);
+    cv.setUint32(16, crc, true);
+    cv.setUint32(20, size, true);
+    cv.setUint32(24, size, true);
+    cv.setUint16(28, name.length, true);
+    cv.setUint32(42, offset, true);
+    ch.set(name, 46);
+    central.push(ch);
+    offset += lh.length + size;
+  });
+  const cdSize = central.reduce((s, c) => s + c.length, 0);
+  const end = new Uint8Array(22);
+  const ev = new DataView(end.buffer);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(8, files.length, true);
+  ev.setUint16(10, files.length, true);
+  ev.setUint32(12, cdSize, true);
+  ev.setUint32(16, offset, true);
+
+  const all = [...parts, ...central, end];
+  const total = all.reduce((s, p) => s + p.length, 0);
+  const out = new Uint8Array(total);
+  let pos = 0;
+  all.forEach(p => { out.set(p, pos); pos += p.length; });
+  return out;
+}
+
+function colName(i) {
+  let s = '';
+  i++;
+  while (i > 0) {
+    const m = (i - 1) % 26;
+    s = String.fromCharCode(65 + m) + s;
+    i = Math.floor((i - 1) / 26);
+  }
+  return s;
+}
+function xmlEsc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/* cell = primitive, or {v, s} where s: 1 = header, 2 = number 0.00, 3 = title */
+const XL = { HEAD: 1, NUM: 2, TITLE: 3 };
+function xlNum(v) { return { v, s: XL.NUM }; }
+function xlHead(v) { return { v, s: XL.HEAD }; }
+function xlTitle(v) { return { v, s: XL.TITLE }; }
+
+function sheetXml(sheet) {
+  let x = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+    '<sheetFormatPr defaultRowHeight="15"/>';
+  if (sheet.cols) {
+    x += '<cols>' + sheet.cols.map((w, i) =>
+      `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('') + '</cols>';
+  }
+  x += '<sheetData>';
+  sheet.rows.forEach((row, r) => {
+    if (!row || !row.length) return;
+    let cells = '';
+    row.forEach((cell, c) => {
+      if (cell === null || cell === undefined || cell === '') return;
+      const ref = colName(c) + (r + 1);
+      let v = cell, s = 0;
+      if (typeof cell === 'object') { v = cell.v; s = cell.s || 0; }
+      const sAttr = s ? ` s="${s}"` : '';
+      if (typeof v === 'number') {
+        if (!isFinite(v)) return;
+        cells += `<c r="${ref}"${sAttr}><v>${v}</v></c>`;
+      } else {
+        cells += `<c r="${ref}"${sAttr} t="inlineStr"><is><t xml:space="preserve">${xmlEsc(v)}</t></is></c>`;
+      }
+    });
+    if (cells) x += `<row r="${r + 1}">${cells}</row>`;
+  });
+  x += '</sheetData>';
+  if (sheet.images && sheet.images.length) x += '<drawing r:id="rId1"/>';
+  x += '</worksheet>';
+  return x;
+}
+
+const STYLES_XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+  '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+  '<fonts count="3">' +
+  '<font><sz val="11"/><name val="Calibri"/></font>' +
+  '<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>' +
+  '<font><b/><sz val="14"/><name val="Calibri"/></font>' +
+  '</fonts>' +
+  '<fills count="3">' +
+  '<fill><patternFill patternType="none"/></fill>' +
+  '<fill><patternFill patternType="gray125"/></fill>' +
+  '<fill><patternFill patternType="solid"><fgColor rgb="FF0EA5E9"/><bgColor indexed="64"/></patternFill></fill>' +
+  '</fills>' +
+  '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
+  '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+  '<cellXfs count="4">' +
+  '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+  '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>' +
+  '<xf numFmtId="2" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
+  '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
+  '</cellXfs>' +
+  '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
+  '</styleSheet>';
+
+/* sheets: [{name, rows, cols?, images?: [{bytes, row (0-based), dispW, dispH}]}] → Uint8Array (.xlsx) */
+function buildXlsx(sheets) {
+  const enc = new TextEncoder();
+  const files = [];
+  const add = (name, data) => files.push({ name, data: typeof data === 'string' ? enc.encode(data) : data });
+  const HDR = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+
+  let ct = HDR + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+    '<Default Extension="xml" ContentType="application/xml"/>' +
+    '<Default Extension="png" ContentType="image/png"/>' +
+    '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+    '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>';
+  let wbSheets = '', wbRels = '', mediaN = 0, drawN = 0;
+
+  sheets.forEach((sh, i) => {
+    const n = i + 1;
+    ct += `<Override PartName="/xl/worksheets/sheet${n}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`;
+    wbSheets += `<sheet name="${xmlEsc(sh.name)}" sheetId="${n}" r:id="rId${n}"/>`;
+    wbRels += `<Relationship Id="rId${n}" Type="${REL}/worksheet" Target="worksheets/sheet${n}.xml"/>`;
+
+    if (sh.images && sh.images.length) {
+      drawN++;
+      let drawing = HDR + '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" ' +
+        'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ' +
+        `xmlns:r="${REL}">`;
+      let drawRels = HDR + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
+      sh.images.forEach((img, k) => {
+        mediaN++;
+        add(`xl/media/image${mediaN}.png`, img.bytes);
+        const cx = Math.round(img.dispW * 9525), cy = Math.round(img.dispH * 9525);
+        drawRels += `<Relationship Id="rId${k + 1}" Type="${REL}/image" Target="../media/image${mediaN}.png"/>`;
+        drawing += '<xdr:oneCellAnchor>' +
+          `<xdr:from><xdr:col>0</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${img.row}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>` +
+          `<xdr:ext cx="${cx}" cy="${cy}"/>` +
+          '<xdr:pic>' +
+          `<xdr:nvPicPr><xdr:cNvPr id="${k + 2}" name="Graph ${k + 1}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>` +
+          `<xdr:blipFill><a:blip r:embed="rId${k + 1}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>` +
+          `<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr>` +
+          '</xdr:pic><xdr:clientData/></xdr:oneCellAnchor>';
+      });
+      drawing += '</xdr:wsDr>';
+      drawRels += '</Relationships>';
+      add(`xl/drawings/drawing${drawN}.xml`, drawing);
+      add(`xl/drawings/_rels/drawing${drawN}.xml.rels`, drawRels);
+      add(`xl/worksheets/_rels/sheet${n}.xml.rels`,
+        HDR + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        `<Relationship Id="rId1" Type="${REL}/drawing" Target="../drawings/drawing${drawN}.xml"/></Relationships>`);
+      ct += `<Override PartName="/xl/drawings/drawing${drawN}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>`;
+    }
+    add(`xl/worksheets/sheet${n}.xml`, sheetXml(sh));
+  });
+
+  wbRels += `<Relationship Id="rId${sheets.length + 1}" Type="${REL}/styles" Target="styles.xml"/>`;
+  ct += '</Types>';
+
+  files.unshift(
+    { name: '[Content_Types].xml', data: enc.encode(ct) },
+    { name: '_rels/.rels', data: enc.encode(HDR +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      `<Relationship Id="rId1" Type="${REL}/officeDocument" Target="xl/workbook.xml"/></Relationships>`) },
+    { name: 'xl/workbook.xml', data: enc.encode(HDR +
+      `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="${REL}">` +
+      `<sheets>${wbSheets}</sheets></workbook>`) },
+    { name: 'xl/_rels/workbook.xml.rels', data: enc.encode(HDR +
+      `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${wbRels}</Relationships>`) },
+    { name: 'xl/styles.xml', data: enc.encode(STYLES_XML) }
+  );
+  return makeZip(files);
+}
+
+/* ── browser helpers ── */
+function canvasToPng(canvas) {
+  // flatten onto an opaque dark background so the image looks right inside Excel
+  const t = document.createElement('canvas');
+  t.width = canvas.width; t.height = canvas.height;
+  const c = t.getContext('2d');
+  c.fillStyle = '#050A14';
+  c.fillRect(0, 0, t.width, t.height);
+  c.drawImage(canvas, 0, 0);
+  const bin = atob(t.toDataURL('image/png').split(',')[1]);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return { bytes, w: t.width, h: t.height };
+}
+function downloadBytes(bytes, filename, mime) {
+  const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+/* places stacked images on a sheet; returns {rows, images} */
+function layoutGraphSheet(titleText, noteText, charts, dispW) {
+  const rows = [[xlTitle(titleText)], [noteText]];
+  const images = [];
+  let r = 3;                                   // 1-based row for the next chart title
+  charts.forEach(ch => {
+    const dispH = Math.round(dispW * ch.h / ch.w);
+    rows[r - 1] = [xlTitle(ch.title)];
+    images.push({ bytes: ch.bytes, row: r, dispW, dispH });   // 0-based row index r = row right below the title
+    r += 1 + Math.ceil(dispH / 20) + 2;
+  });
+  return { rows, images };
+}
+
+
+/* ===== Export: graphs -> Excel / PNG ZIP ===== */
+const CHART_DEFS=[
+  {id:'freqCanvas',   file:'1_frequency_curve',               title:'Frequency Curve'},
+  {id:'designCanvas', file:'2_design_rainfall_by_return_period',title:'Design Rainfall by Return Period'},
+  {id:'barCanvas',    file:'3_annual_maxima_vs_design_levels', title:'Annual Maxima vs Design Levels'},
+  {id:'histCanvas',   file:'4_histogram_fitted_pdf',           title:'Distribution of Annual Maxima (Histogram + Fitted PDF)'},
+  {id:'cdfCanvas',    file:'5_empirical_vs_fitted_cdf',        title:'Empirical vs Fitted CDF (Kolmogorov-Smirnov Check)'},
+  {id:'qqCanvas',     file:'6_qq_plot',                        title:'Q-Q Plot (Observed vs Fitted)'},
+  {id:'cmpCanvas',    file:'7_method_comparison',              title:'Method Comparison'}];
+function collectCharts(){drawAll();return CHART_DEFS.map(d=>Object.assign({},d,canvasToPng($(d.id))))}
+function exportGraphsZip(){
+  if(!A){msg('Run the analysis first.');return}
+  const files=collectCharts().map(c=>({name:c.file+'.png',data:c.bytes}));
+  downloadBytes(makeZip(files),'design_rainfall_graphs_'+Date.now()+'.zip','application/zip');msg('Graphs saved (ZIP of PNG images).')}
+function exportExcel(){
+  if(!A){msg('Run the analysis first.');return}
+  const g=layoutGraphSheet('Design Flood Estimation — Graphs','Graphs are embedded as high-resolution images. The data behind them is on the other sheets.',collectCharts(),900);
+  const gf=A.g,ok=gf.D<gf.crit;
+  const summary=[[xlTitle('Design Flood Estimation — Summary')],[],[xlHead('Parameter'),xlHead('Value')],
+    ['Generated',new Date().toLocaleString()],['Selected method',A.M.name],['Years of record',A.n],['Period',`${A.rows[0].year} – ${A.rows[A.rows.length-1].year}`],
+    ['Mean annual maximum (mm)',xlNum(A.m)],['Std deviation (mm)',xlNum(A.s)],['Skewness (data)',xlNum(A.sk)],[],
+    ['K-S D',xlNum(gf.D)],['K-S critical value (5%)',xlNum(gf.crit)],['K-S result',ok?'Fit not rejected':'Fit rejected'],
+    ['RMSE (mm)',xlNum(gf.rmse)],['Correlation r (observed vs fitted)',xlNum(gf.r)],[],
+    ['Highest event (mm)',xlNum(A.mx.v)],['Highest event year',A.mx.year],['T of highest event, Weibull (years)',A.n+1],['T of highest event, fitted curve (years)',xlNum(A.Tfit)]];
+  const design=[[xlHead('Return period T (years)'),xlHead('Exceedance probability (%)'),xlHead('Design rainfall (mm)'),xlHead('Std error (mm)'),xlHead('95% lower (mm)'),xlHead('95% upper (mm)')]];
+  A.design.forEach(d=>design.push([d.T,xlNum(100/d.T),xlNum(d.x),d.se===null?'':xlNum(d.se),d.se===null?'':xlNum(d.x-1.96*d.se),d.se===null?'':xlNum(d.x+1.96*d.se)]));
+  const meth=[[xlHead('Method'),xlHead('K-S D'),xlHead('RMSE (mm)'),xlHead('r')].concat(A.periods.map(T=>xlHead('T = '+T+' (mm)')))];
+  A.all.forEach(m=>meth.push([m.M.name+(m.kind===A.kind?' (selected)':''),xlNum(m.g.D),xlNum(m.g.rmse),xlNum(m.g.r)].concat(m.q.map(q=>xlNum(q)))));
+  const rank=[[xlHead('Rank (m)'),xlHead('Year'),xlHead('Observed (mm)'),xlHead('T = (n+1)/m (years)'),xlHead('P = m/(n+1) (%)'),xlHead('Fitted at this T (mm)')]];
+  A.ranked.forEach(r=>rank.push([r.rank,r.year,xlNum(r.v),xlNum(r.T),xlNum(r.P*100),xlNum(r.fit)]));
+  const bytes=buildXlsx([
+    {name:'Graphs',rows:g.rows,images:g.images,cols:[60]},
+    {name:'Summary',rows:summary,cols:[40,30]},
+    {name:'Design Rainfall',rows:design,cols:[22,26,20,16,16,16]},
+    {name:'Method Comparison',rows:meth,cols:[34,12,12,10,16,16,16,16,16,16,16,16,16,16,16]},
+    {name:'Ranked Data',rows:rank,cols:[12,10,16,22,18,22]}]);
+  downloadBytes(bytes,'design_rainfall_'+Date.now()+'.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');msg('Excel file saved (graphs + data).')}
+</script>
+</body>
+</html>
