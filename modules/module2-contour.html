@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contour-Based Rainfall — Precipitation Analyzer</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Times New Roman',Times,serif}
+@media (hover:hover) and (pointer:fine){*{cursor:none}}
+body{background:#0A1628;min-height:100vh;overflow-x:hidden;color:#E2E8F0}
+option{background:#0A1628;color:#E2E8F0}
+.cursor-dot{position:fixed;width:8px;height:8px;background:#38BDF8;border-radius:50%;pointer-events:none;z-index:9999;box-shadow:0 0 20px #38BDF8,0 0 40px #38BDF8;transform:translate(-50%,-50%)}
+.cursor-ring{position:fixed;width:40px;height:40px;border:2px solid rgba(56,189,248,.5);border-radius:50%;pointer-events:none;z-index:9998;transform:translate(-50%,-50%);transition:width .3s,height .3s,background .3s,border-color .3s}
+.cursor-ring.hover{width:70px;height:70px;border-color:rgba(34,211,238,.9);background:rgba(34,211,238,.12)}
+.cursor-ring.click{width:100px;height:100px;border-color:#22D3EE;background:rgba(34,211,238,.2)}
+canvas.fx{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none}
+#rainCanvas{z-index:1}#waveCanvas{z-index:2}#trailCanvas{z-index:50}
+.bg{position:fixed;inset:0;pointer-events:none;z-index:1;background:radial-gradient(circle at 20% 30%,rgba(56,189,248,.08),transparent 50%),radial-gradient(circle at 80% 70%,rgba(14,165,233,.06),transparent 50%)}
+.grid-overlay{position:fixed;inset:0;pointer-events:none;z-index:1;background-image:linear-gradient(rgba(56,189,248,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(56,189,248,.03) 1px,transparent 1px);background-size:80px 80px}
+.page{position:fixed;inset:0;overflow-y:auto;z-index:10;opacity:0;visibility:hidden;transform:translateX(100%) scale(.95);transition:all .7s cubic-bezier(.23,1,.32,1);padding:30px 20px}
+.page.active{opacity:1;visibility:visible;transform:none}
+.page.exit-left{transform:translateX(-100%) scale(.95);opacity:0}
+.container{max-width:1300px;margin:0 auto}
+.page-header{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:30px;padding:20px 25px;background:rgba(15,23,42,.7);backdrop-filter:blur(20px);border-radius:18px;border:1px solid rgba(56,189,248,.15)}
+.page-header h2{font-size:1.4rem;color:#38BDF8;letter-spacing:1px}
+.back-btn{padding:10px 22px;border:1px solid rgba(56,189,248,.3);border-radius:10px;background:rgba(56,189,248,.08);color:#38BDF8;font-size:.9rem;font-weight:600;transition:all .3s}
+.back-btn:hover{background:rgba(56,189,248,.2);transform:translateY(-3px)}
+.hero{text-align:center;padding:50px 20px 30px}
+.badge{display:inline-block;padding:8px 22px;border-radius:30px;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.3);font-size:.75rem;letter-spacing:4px;text-transform:uppercase;color:#38BDF8;margin-bottom:24px;animation:fl 3s ease-in-out infinite}
+@keyframes fl{50%{transform:translateY(-6px)}}
+.hero h1{font-size:3.5rem;font-weight:900;background:linear-gradient(90deg,#38BDF8,#0EA5E9,#22D3EE,#38BDF8);background-size:300% auto;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:sh 5s linear infinite;margin-bottom:12px;line-height:1.1}
+@keyframes sh{to{background-position:300% center}}
+.author{font-size:1.15rem;color:#38BDF8;font-weight:700;letter-spacing:3px;margin-bottom:16px;animation:ng 3s ease-in-out infinite}
+@keyframes ng{0%,100%{text-shadow:0 0 15px rgba(56,189,248,.5)}50%{text-shadow:0 0 35px rgba(56,189,248,.9)}}
+.subtitle{color:#94A3B8;letter-spacing:2px;margin-bottom:12px;font-style:italic}
+.desc{color:#7C8CA3;max-width:720px;margin:0 auto;line-height:1.7}
+.section-title{font-size:1.4rem;margin:40px 0 20px;padding-bottom:12px;border-bottom:1px solid rgba(56,189,248,.15);display:flex;align-items:center}
+.section-title::before{content:'';width:5px;height:24px;background:linear-gradient(180deg,#38BDF8,#22D3EE);margin-right:14px;border-radius:3px}
+.features-grid,.summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px;margin-bottom:30px}
+.feature-card,.summary-card,.input-panel{background:rgba(15,23,42,.7);backdrop-filter:blur(20px);border-radius:14px;padding:24px;border:1px solid rgba(56,189,248,.15);transition:all .4s}
+.feature-card:hover,.summary-card:hover{transform:translateY(-6px);box-shadow:0 20px 40px rgba(0,0,0,.4),0 0 30px rgba(56,189,248,.15);border-color:rgba(56,189,248,.4)}
+.feature-card h4{color:#38BDF8;margin-bottom:10px;font-size:1.05rem}
+.feature-card p{font-size:.92rem;color:#94A3B8;line-height:1.6}
+.input-panel{margin-bottom:24px}
+.input-panel h3{font-size:1rem;color:#38BDF8;margin-bottom:20px;letter-spacing:1.5px;text-transform:uppercase}
+.input-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:20px}
+label{display:block;font-size:.78rem;color:#94A3B8;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;font-weight:600}
+input,select,textarea{width:100%;padding:12px 16px;border-radius:10px;border:1px solid rgba(56,189,248,.2);background:rgba(0,0,0,.4);color:#E2E8F0;font-size:.95rem;outline:none;transition:all .3s}
+input:focus,select:focus,textarea:focus{border-color:#38BDF8;box-shadow:0 0 20px rgba(56,189,248,.3)}
+textarea{min-height:180px;resize:vertical;font-family:'Courier New',monospace;line-height:1.7}
+.upload-box{border:2px dashed rgba(56,189,248,.4);border-radius:14px;padding:36px 20px;text-align:center;background:rgba(56,189,248,.03);transition:all .3s}
+.upload-box:hover{border-color:#38BDF8;background:rgba(56,189,248,.08)}
+.upload-box p{color:#94A3B8;margin-top:8px}
+.station-table{width:100%;border-collapse:collapse;background:rgba(0,0,0,.3);min-width:640px}
+.station-table th{background:rgba(56,189,248,.15);color:#38BDF8;padding:12px;text-align:left;font-size:.82rem;text-transform:uppercase;letter-spacing:1px}
+.station-table td{padding:10px 12px;border-bottom:1px solid rgba(56,189,248,.08);font-size:.92rem}
+.summary-card{text-align:center;padding:20px}
+.summary-label{font-size:.72rem;color:#94A3B8;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
+.summary-value{font-size:1.6rem;font-weight:800;color:#38BDF8;font-family:'Courier New',monospace}
+.summary-value.good{color:#10B981}.summary-value.bad{color:#F59E0B}
+.summary-unit{font-size:.75rem;color:#7C8CA3;margin-top:4px}
+.canvas-wrapper{background:rgba(5,10,20,.8);border-radius:16px;padding:16px;border:1px solid rgba(56,189,248,.2);margin-bottom:24px}
+canvas.chart-canvas{width:100%;height:auto;border-radius:10px;display:block}
+.formula-box{background:rgba(34,211,238,.05);border-left:4px solid #22D3EE;border-radius:10px;padding:20px;margin-bottom:24px;font-family:'Courier New',monospace;color:#38BDF8;line-height:1.8}
+.formula-label{font-family:'Times New Roman',serif;color:#94A3B8;font-size:.85rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+.info-box{background:rgba(34,211,238,.08);border-left:4px solid #22D3EE;border-radius:10px;padding:16px 20px;margin-bottom:20px;color:#CBD5E1;line-height:1.7}
+.info-box strong{color:#38BDF8}
+.info-box.warning{background:rgba(245,158,11,.08);border-left-color:#F59E0B}.info-box.warning strong{color:#F59E0B}
+.info-box.success{background:rgba(16,185,129,.08);border-left-color:#10B981}.info-box.success strong{color:#10B981}
+.liquid-btn{position:relative;display:inline-block;margin:5px;padding:14px 36px;border:none;border-radius:50px;background:linear-gradient(135deg,#38BDF8,#0EA5E9,#22D3EE);background-size:300% 300%;color:#0A1628;font-size:.9rem;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;transition:all .4s cubic-bezier(.23,1,.32,1);box-shadow:0 10px 30px rgba(56,189,248,.3),inset 0 2px 8px rgba(255,255,255,.3);animation:lf 4s ease infinite}
+@keyframes lf{50%{background-position:100% 50%}}
+.liquid-btn:hover{transform:translateY(-5px) scale(1.05);box-shadow:0 20px 50px rgba(56,189,248,.5)}
+.liquid-btn.red{background:linear-gradient(135deg,#EF4444,#DC2626);color:#fff}
+.hint{font-size:.75rem;color:#7C8CA3;margin-top:6px}.dlbtn{margin-left:auto;padding:6px 16px;font-size:.8rem}.small{padding:10px 24px;font-size:.82rem}
+.footer{text-align:center;padding:40px 20px 30px;color:#64748B;letter-spacing:1px;font-style:italic;border-top:1px solid rgba(56,189,248,.1);margin-top:50px}
+.footer span{color:#38BDF8;font-weight:600}
+#toast{position:fixed;left:50%;bottom:30px;transform:translate(-50%,100px);background:#0C4A7A;color:#fff;padding:12px 24px;border-radius:30px;z-index:10000;border:1px solid #38BDF8;transition:transform .4s}
+#toast.show{transform:translate(-50%,0)}
+::-webkit-scrollbar{width:8px}::-webkit-scrollbar-track{background:#0A1628}::-webkit-scrollbar-thumb{background:linear-gradient(180deg,#38BDF8,#22D3EE);border-radius:10px}
+@media (max-width:700px){.hero h1{font-size:2.2rem}}
+</style>
+</head>
+<body>
+<div class="cursor-dot" id="cursorDot"></div><div class="cursor-ring" id="cursorRing"></div>
+<canvas id="rainCanvas" class="fx"></canvas><canvas id="waveCanvas" class="fx"></canvas><canvas id="trailCanvas" class="fx"></canvas>
+<div class="bg"></div><div class="grid-overlay"></div><div id="toast"></div>
+
+<div class="page active" id="pageDashboard"><div class="container">
+  <div class="page-header"><h2>Contour-Based Rainfall</h2><button class="back-btn" onclick="location.href='index.html'">← Back</button></div>
+  <div class="hero">
+    <div class="badge">Module 2 — Isohyetal Method</div>
+    <h1>Contour-Based Rainfall</h1>
+    <div class="author">by Junaid Ali</div>
+    <p class="subtitle">Isohyetal Method for Hilly & Varied Terrain</p>
+    <p class="desc">Build a rainfall surface from your stations, draw true isohyets, and compute the basin average from the area between them. The result is checked against Thiessen, the surface mean and the arithmetic mean.</p>
+  </div>
+  <div class="section-title">What This Module Does</div>
+  <div class="features-grid">
+    <div class="feature-card"><h4>True Isohyets</h4><p>Contour lines traced with marching squares on an IDW surface, on a map with coordinates, scale bar and basin outline.</p></div>
+    <div class="feature-card"><h4>Isohyetal Average</h4><p>P̄ = Σ[(Pᵢ+Pᵢ₊₁)/2 × Aᵢ] / ΣAᵢ over the basin, with a table of band areas in km².</p></div>
+    <div class="feature-card"><h4>Method Comparison</h4><p>Isohyetal vs Thiessen vs IDW surface mean vs arithmetic mean, with basin rainfall volume.</p></div>
+    <div class="feature-card"><h4>Check and Export</h4><p>Leave-one-out test of the interpolation, then Excel, PNG, ZIP and GIS-ready grid downloads.</p></div>
+  </div>
+  <div style="text-align:center;margin-top:30px"><button class="liquid-btn" onclick="goToPage('pageInput')">Start Analysis →</button></div>
+  <div class="footer">Developed by <span>Junaid Ali</span> · Civil Engineering Research</div>
+</div></div>
+
+<div class="page" id="pageInput"><div class="container">
+  <div class="page-header"><h2>Contour-Based Rainfall — Input</h2><button class="back-btn" onclick="goToPage('pageDashboard')">← Back</button></div>
+  <div class="info-box"><strong>Data needed:</strong> rainfall (mm) for the same period at each station, with <strong>latitude and longitude in decimal degrees</strong>. At least 3 stations are needed and 5 or more are recommended, because isohyets drawn from very few gauges are rough.</div>
+  <div class="input-panel"><h3>Option 1: Upload CSV</h3>
+    <div class="upload-box" onclick="$('csvFile').click()"><div style="font-size:2.5rem">📁</div><p>Click to upload CSV file</p><p style="font-size:.8rem">Columns: station, rainfall, lat, lon (header row optional)</p>
+    <input type="file" id="csvFile" accept=".csv,.txt" style="display:none" onchange="handleCsv(event)"></div>
+    <div id="csvStatus" style="display:none;margin-top:15px;padding:12px;background:rgba(34,211,238,.1);border-left:3px solid #22D3EE;border-radius:8px;color:#22D3EE">✅ <span id="csvFileName"></span></div>
+  </div>
+  <div class="input-panel"><h3>Option 2: Manual Entry</h3>
+    <div id="stationsContainer"></div>
+    <div style="margin-top:16px"><button class="liquid-btn small" onclick="addStation()">+ Add Station</button><button class="liquid-btn small red" onclick="clearStations()">Clear All</button><button class="liquid-btn small" onclick="loadDemoData()">Load Demo Data</button></div>
+  </div>
+  <div class="input-panel"><h3>Analysis Settings</h3>
+    <div class="input-row">
+      <div><label>IDW Power</label><input type="number" id="idwPower" value="2" min="0.5" max="6" step="0.5"><p class="hint">Higher power gives local peaks around each gauge. 2 is the usual choice.</p></div>
+      <div><label>Isohyet Interval (mm)</label><input type="number" id="isoInterval" placeholder="auto" min="0" step="any"><p class="hint">Leave blank for about 8 bands.</p></div>
+    </div>
+    <label>Basin Boundary (optional): one "lat, lon" vertex per line</label>
+    <textarea id="basinPoly" style="min-height:110px" placeholder="31.75, 74.05&#10;31.75, 74.55&#10;31.25, 74.55&#10;31.25, 74.05"></textarea>
+    <p class="hint">Blank means the convex hull of the stations is used as the basin. Averages only cover the basin area.</p>
+  </div>
+  <div style="text-align:center;margin-top:30px"><button class="liquid-btn" onclick="runAnalysis()">Run Analysis →</button></div>
+</div></div>
+
+<div class="page" id="pageResults"><div class="container">
+  <div class="page-header"><h2>Contour-Based Rainfall — Results</h2><button class="back-btn" onclick="goToPage('pageInput')">← Back</button></div>
+  <div id="warn"></div><div class="summary-grid" id="summary"></div>
+  <div class="section-title">Isohyetal Method</div><div class="formula-box" id="formulaBox"></div>
+  <div class="section-title">Rainfall Isohyetal Map<button class="back-btn dlbtn" onclick="dlChart('mapCanvas','isohyetal_map')">⬇ PNG</button></div>
+  <div class="canvas-wrapper"><canvas id="mapCanvas" class="chart-canvas" width="1100" height="740"></canvas></div>
+  <div class="section-title">Isohyetal Band Table</div>
+  <div class="input-panel" style="overflow-x:auto;padding:12px"><table class="station-table" id="bandTable"><thead><tr><th>Band (mm)</th><th>Mean P (mm)</th><th>Area (km²)</th><th>Area %</th><th>Mean × Area</th></tr></thead><tbody></tbody></table></div>
+  <div class="section-title">Area by Band<button class="back-btn dlbtn" onclick="dlChart('bandCanvas','band_areas')">⬇ PNG</button></div>
+  <div class="canvas-wrapper"><canvas id="bandCanvas" class="chart-canvas" width="1100" height="520"></canvas></div>
+  <div class="section-title">Method Comparison<button class="back-btn dlbtn" onclick="dlChart('cmpCanvas','method_comparison')">⬇ PNG</button></div>
+  <div class="canvas-wrapper"><canvas id="cmpCanvas" class="chart-canvas" width="1100" height="520"></canvas></div>
+  <div class="section-title">Interpolation Check (leave-one-out)<button class="back-btn dlbtn" onclick="dlChart('looCanvas','idw_validation')">⬇ PNG</button></div>
+  <div class="canvas-wrapper"><canvas id="looCanvas" class="chart-canvas" width="1100" height="600"></canvas></div>
+  <div class="section-title">Station Data</div>
+  <div class="input-panel" style="overflow-x:auto;padding:12px"><table class="station-table" id="dataTable"><thead><tr><th>#</th><th>Station</th><th>Rainfall (mm)</th><th>Latitude</th><th>Longitude</th><th>Thiessen Area (km²)</th><th>Weight</th><th>IDW Check (mm)</th></tr></thead><tbody></tbody></table></div>
+  <div style="text-align:center;margin-top:30px"><button class="liquid-btn" onclick="saveXLSX()">Download Excel (.xlsx)</button><button class="liquid-btn" onclick="saveChartsZip()">All Charts (PNG ZIP)</button><button class="liquid-btn" onclick="saveGrid()">Grid for GIS (CSV)</button><button class="liquid-btn" onclick="saveReport()">Report (TXT)</button><button class="liquid-btn" onclick="goToPage('pageDashboard')">Dashboard</button></div>
+  <div class="footer">Developed by <span>Junaid Ali</span> · Civil Engineering Research</div>
+</div></div>
+
+<script>
+const $=id=>document.getElementById(id);
+function msg(t){const e=$('toast');e.textContent=t;e.classList.add('show');clearTimeout(msg.t);msg.t=setTimeout(()=>e.classList.remove('show'),5000)}
+
+/* ===== Effects: cursor, water drops, rain, waves (one loop) ===== */
+const dot=$('cursorDot'),ring=$('cursorRing'),T=$('trailCanvas'),R=$('rainCanvas'),V=$('waveCanvas');
+const tc=T.getContext('2d'),rc=R.getContext('2d'),wc=V.getContext('2d');
+let parts=[],off=0;const drops=[];
+if(!matchMedia('(pointer:fine)').matches){dot.style.display=ring.style.display='none'}
+function rs(){for(const c of[T,R,V]){c.width=innerWidth;c.height=innerHeight}}
+rs();addEventListener('resize',rs);
+for(let i=0;i<120;i++)drops.push({x:Math.random()*innerWidth,y:Math.random()*innerHeight,l:10+Math.random()*20,s:2+Math.random()*3,o:.15+Math.random()*.3,w:.5+Math.random()*1.5});
+function burst(x,y,n,sp,sz){for(let i=0;i<n;i++)parts.push({x,y,vx:(Math.random()-.5)*sp,vy:(Math.random()-.5)*sp,life:1,size:Math.random()*sz+2,c:Math.random()>.5?'56,189,248':'34,211,238'})}
+addEventListener('pointermove',e=>{dot.style.left=ring.style.left=e.clientX+'px';dot.style.top=ring.style.top=e.clientY+'px';burst(e.clientX,e.clientY,2,3,4)});
+addEventListener('pointerdown',e=>{ring.classList.add('click');burst(e.clientX,e.clientY,40,12,7)});
+addEventListener('pointerup',()=>ring.classList.remove('click'));
+const HOV='button,input,select,textarea,.upload-box,.feature-card';
+document.addEventListener('pointerover',e=>{if(e.target.closest(HOV))ring.classList.add('hover')});
+document.addEventListener('pointerout',e=>{if(e.target.closest(HOV))ring.classList.remove('hover')});
+function wave(y,a,l,col,sp,op){wc.beginPath();wc.moveTo(0,V.height);for(let x=0;x<=V.width;x+=5)wc.lineTo(x,y+Math.sin((x+off*sp)/l)*a);wc.lineTo(V.width,V.height);wc.fillStyle=col;wc.globalAlpha=op;wc.fill();wc.globalAlpha=1}
+function loop(){
+  tc.clearRect(0,0,T.width,T.height);parts=parts.filter(p=>p.life>0&&p.size>.3);
+  for(const p of parts){p.x+=p.vx;p.y+=p.vy;p.vy+=.12;p.life-=.02;p.size*=.975;tc.beginPath();tc.arc(p.x,p.y,p.size,0,6.283);tc.fillStyle=`rgba(${p.c},${p.life*.8})`;tc.shadowColor=`rgba(${p.c},${p.life})`;tc.shadowBlur=12;tc.fill()}
+  tc.shadowBlur=0;rc.clearRect(0,0,R.width,R.height);rc.lineCap='round';
+  for(const d of drops){d.y+=d.s;if(d.y>R.height+20){d.y=-30;d.x=Math.random()*R.width}rc.strokeStyle=`rgba(56,189,248,${d.o})`;rc.lineWidth=d.w;rc.beginPath();rc.moveTo(d.x,d.y);rc.lineTo(d.x-1,d.y+d.l);rc.stroke()}
+  wc.clearRect(0,0,V.width,V.height);
+  wave(V.height-60,25,200,'#0EA5E9',1,.15);wave(V.height-40,30,250,'#38BDF8',.8,.12);wave(V.height-20,20,180,'#22D3EE',1.2,.1);
+  off++;requestAnimationFrame(loop)}
+loop();
+
+/* ===== Navigation ===== */
+let cur='pageDashboard',busy=false;
+function goToPage(id){if(id===cur||busy)return;busy=true;const c=$(cur),n=$(id);c.classList.remove('active');c.classList.add('exit-left');
+  setTimeout(()=>{c.classList.remove('exit-left');n.classList.add('active');n.scrollTop=0;cur=id;busy=false},500)}
+
+/* ===== Setup ===== */
+const mean=a=>a.reduce((s,v)=>s+v,0)/a.length;
+const num=(id,d)=>{const v=parseFloat($(id).value);return isNaN(v)?d:v};
+const fmt=v=>String(+(+v).toFixed(1));
+let stations=[];
+function renderStations(){$('stationsContainer').innerHTML=stations.map((s,i)=>`<div class="input-row"><div><label>Station ${i+1} Name</label><input type="text" value="${esc(s.name)}" onchange="stations[${i}].name=this.value"></div><div><label>Rainfall (mm)</label><input type="number" min="0" step="any" value="${s.rainfall}" onchange="stations[${i}].rainfall=parseFloat(this.value)"></div><div><label>Latitude</label><input type="number" step="any" value="${s.lat}" onchange="stations[${i}].lat=parseFloat(this.value)"></div><div><label>Longitude</label><input type="number" step="any" value="${s.lon}" onchange="stations[${i}].lon=parseFloat(this.value)"></div><div style="display:flex;align-items:flex-end"><button class="back-btn" style="padding:12px 14px;color:#EF4444;border-color:rgba(239,68,68,.4)" onclick="removeStation(${i})">✕</button></div></div>`).join('')}
+function addStation(){stations.push({name:'Station '+(stations.length+1),rainfall:0,lat:31.5,lon:74.3});renderStations()}
+function removeStation(i){stations.splice(i,1);renderStations()}
+function clearStations(){stations=[];renderStations()}
+function loadDemoData(){stations=[{name:'Station A',rainfall:45,lat:31.6,lon:74.2},{name:'Station B',rainfall:85,lat:31.5,lon:74.4},{name:'Station C',rainfall:125,lat:31.4,lon:74.3},{name:'Station D',rainfall:165,lat:31.3,lon:74.5},{name:'Station E',rainfall:95,lat:31.7,lon:74.5},{name:'Station F',rainfall:75,lat:31.5,lon:74.1}];renderStations()}
+function handleCsv(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();
+  r.onload=ev=>{const lines=ev.target.result.split(/\r?\n/).filter(l=>l.trim());if(lines.length<2){msg('CSV is empty or invalid.');return}
+    const d=lines[0].includes('\t')?'\t':(lines[0].includes(';')&&!lines[0].includes(','))?';':',',row=l=>l.split(d).map(x=>x.trim().replace(/^"|"$/g,''));
+    const h=row(lines[0]).map(x=>x.toLowerCase()),hasH=isNaN(parseFloat(h[1]));let ni=0,ri=1,la=2,lo=3;
+    if(hasH)h.forEach((c,i)=>{if(/stat|name/.test(c))ni=i;else if(/rain|prec|mm/.test(c))ri=i;else if(/^lat/.test(c))la=i;else if(/^lon/.test(c))lo=i});
+    const out=[];let bad=0;(hasH?lines.slice(1):lines).forEach((l,k)=>{const p=row(l),rf=parseFloat(p[ri]),lt=parseFloat(p[la]),ln=parseFloat(p[lo]);if([rf,lt,ln].some(isNaN)){bad++;return}out.push({name:p[ni]||'Station '+(k+1),rainfall:rf,lat:lt,lon:ln})});
+    stations=out;renderStations();$('csvStatus').style.display='block';$('csvFileName').textContent=`${f.name}: ${out.length} stations loaded${bad?', '+bad+' invalid row(s) skipped':''}`;e.target.value=''};r.readAsText(f)}
+
+/* ===== Geometry and interpolation ===== */
+function hull(pts){const p=[...pts].sort((a,b)=>a.lon-b.lon||a.lat-b.lat),cr=(o,a,b)=>(a.lon-o.lon)*(b.lat-o.lat)-(a.lat-o.lat)*(b.lon-o.lon),lo=[],up=[];
+  for(const q of p){while(lo.length>1&&cr(lo[lo.length-2],lo[lo.length-1],q)<=0)lo.pop();lo.push(q)}
+  for(const q of p.slice().reverse()){while(up.length>1&&cr(up[up.length-2],up[up.length-1],q)<=0)up.pop();up.push(q)}
+  return lo.slice(0,-1).concat(up.slice(0,-1))}
+const inside=(poly,x,y)=>{let c=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const a=poly[i],b=poly[j];if((a.lat>y)!==(b.lat>y)&&x<(b.lon-a.lon)*(y-a.lat)/(b.lat-a.lat)+a.lon)c=!c}return c};
+function march(g,nx,ny,lv,emit){const T=(a,b)=>(lv-a)/(b-a);
+  for(let i=0;i<ny-1;i++)for(let j=0;j<nx-1;j++){const a=g[i][j],b=g[i][j+1],c=g[i+1][j+1],d=g[i+1][j],k=(a>lv?8:0)|(b>lv?4:0)|(c>lv?2:0)|(d>lv?1:0);if(k===0||k===15)continue;
+    const t=()=>[j+T(a,b),i],rt=()=>[j+1,i+T(b,c)],bt=()=>[j+T(d,c),i+1],l=()=>[j,i+T(a,d)],mid=(a+b+c+d)/4>lv;
+    const S={1:[[l,bt]],2:[[bt,rt]],3:[[l,rt]],4:[[t,rt]],6:[[t,bt]],7:[[t,l]],8:[[t,l]],9:[[t,bt]],11:[[t,rt]],12:[[l,rt]],13:[[bt,rt]],14:[[l,bt]],5:mid?[[t,l],[rt,bt]]:[[t,rt],[l,bt]],10:mid?[[t,rt],[l,bt]]:[[t,l],[rt,bt]]}[k];
+    S.forEach(([p,q])=>emit(p(),q()))}}
+function col(n){n=Math.max(0,Math.min(1,n));let r,g,b;if(n<.33){const t=n/.33;r=30+4*t;g=64+147*t;b=175+63*t}else if(n<.66){const t=(n-.33)/.33;r=34+216*t;g=211-7*t;b=238-217*t}else{const t=(n-.66)/.34;r=250-11*t;g=204-136*t;b=21+47*t}return`rgb(${r|0},${g|0},${b|0})`}
+
+/* ===== Analysis ===== */
+let A=null;
+function runAnalysis(){
+  const S=stations.map(s=>({name:String(s.name||'').trim()||'Station',rainfall:+s.rainfall,lat:+s.lat,lon:+s.lon}));
+  if(S.length<3){msg('Add at least 3 stations.');return}
+  if(S.some(s=>!isFinite(s.rainfall)||s.rainfall<0||!isFinite(s.lat)||!isFinite(s.lon)||Math.abs(s.lat)>90||Math.abs(s.lon)>180)){msg('Check the stations: rainfall must be 0 or more, latitude within ±90 and longitude within ±180.');return}
+  const p=num('idwPower',2);if(!(p>=.5&&p<=6)){msg('IDW power must be between 0.5 and 6.');return}
+  let poly,basinTxt;const bt=$('basinPoly').value.trim();
+  if(bt){poly=[];for(const l of bt.split(/\r?\n/)){const q=l.split(/[,;\t\s]+/).map(parseFloat);if(q.length>=2&&!isNaN(q[0])&&!isNaN(q[1]))poly.push({lat:q[0],lon:q[1]})}
+    if(poly.length<3){msg('The basin boundary needs at least 3 "lat, lon" vertices.');return}basinTxt=`User boundary (${poly.length} vertices)`}
+  else{poly=hull(S);basinTxt='Convex hull of the stations';if(poly.length<3){msg('The stations lie on a straight line, so no basin area can be formed.');return}}
+  const la=poly.map(q=>q.lat),lo=poly.map(q=>q.lon),minLat=Math.min(...la),maxLat=Math.max(...la),minLon=Math.min(...lo),maxLon=Math.max(...lo);
+  const ky=111.195,kx=ky*Math.cos((minLat+maxLat)/2*Math.PI/180),wk=(maxLon-minLon)*kx,hk=(maxLat-minLat)*ky;
+  if(!(wk>0&&hk>0)){msg('The basin has no area.');return}
+  for(let i=0;i<S.length;i++)for(let j=i+1;j<S.length;j++)if(Math.hypot((S[i].lon-S[j].lon)*kx,(S[i].lat-S[j].lat)*ky)<.001){msg(`${S[i].name} and ${S[j].name} are at the same location.`);return}
+  let ar=0;for(let i=0,j=poly.length-1;i<poly.length;j=i++)ar+=(poly[j].lon*kx)*(poly[i].lat*ky)-(poly[i].lon*kx)*(poly[j].lat*ky);const basinArea=Math.abs(ar)/2;
+  if(!bt&&basinArea<.02*wk*hk){msg('The stations lie almost on a straight line, so no real basin area can be formed. Add stations that spread out, or enter a basin boundary.');return}
+  const cs=Math.max(wk,hk)/140,nx=Math.max(8,Math.ceil(wk/cs)),ny=Math.max(8,Math.ceil(hk/cs)),dLon=(maxLon-minLon)/nx,dLat=(maxLat-minLat)/ny;
+  const idw=(lat,lon,st)=>{let nu=0,de=0;for(const s of st){const d=Math.hypot((lon-s.lon)*kx,(lat-s.lat)*ky);if(d<.001)return s.rainfall;const w=1/d**p;nu+=w*s.rainfall;de+=w}return nu/de};
+  const vals=[],ins=[],cnt=new Array(S.length).fill(0);let nIn=0,minV=Infinity,maxV=-Infinity,sumV=0;
+  for(let i=0;i<ny;i++){vals[i]=[];ins[i]=[];for(let j=0;j<nx;j++){const lat=minLat+(i+.5)*dLat,lon=minLon+(j+.5)*dLon,v=idw(lat,lon,S),ok=inside(poly,lon,lat);vals[i][j]=v;ins[i][j]=ok;
+    if(ok){nIn++;sumV+=v;if(v<minV)minV=v;if(v>maxV)maxV=v;let b=0,bd=Infinity;S.forEach((s,k)=>{const d=Math.hypot((lon-s.lon)*kx,(lat-s.lat)*ky);if(d<bd){bd=d;b=k}});cnt[b]++}}}
+  if(nIn<20){msg('The basin is too small for the grid.');return}
+  const cellA=basinArea/nIn,surf=sumV/nIn,rng=maxV-minV;
+  let dP=num('isoInterval',NaN);if(!(dP>0))dP=rng>0?nice(rng/8):1;
+  if(rng>0&&rng/dP>40){msg('The isohyet interval is too small (more than 40 bands).');return}
+  const levels=[];for(let k=Math.floor(minV/dP)+1;k*dP<maxV-1e-9;k++)levels.push(+(k*dP).toFixed(6));
+  const edges=[minV,...levels,maxV],bc=new Array(edges.length-1).fill(0);
+  for(let i=0;i<ny;i++)for(let j=0;j<nx;j++)if(ins[i][j]){let b=0;while(b<levels.length&&vals[i][j]>=levels[b])b++;bc[b]++}
+  const bands=edges.slice(0,-1).map((lw,b)=>({lo:lw,hi:edges[b+1],mean:(lw+edges[b+1])/2,area:bc[b]*cellA})).filter(b=>b.area>0);
+  const isoAvg=bands.reduce((s,b)=>s+b.mean*b.area,0)/bands.reduce((s,b)=>s+b.area,0);
+  const stA=cnt.map(c=>c*cellA),thies=S.reduce((s,st,k)=>s+st.rainfall*stA[k],0)/basinArea,arith=mean(S.map(s=>s.rainfall));
+  const loo=S.map((s,k)=>({...s,pred:idw(s.lat,s.lon,S.filter((_,m)=>m!==k))}));
+  const er=loo.map(s=>s.pred-s.rainfall),rmse=Math.sqrt(mean(er.map(e=>e*e))),mae=mean(er.map(Math.abs)),bias=100*er.reduce((a,b)=>a+b,0)/loo.reduce((a,s)=>a+s.rainfall,0);
+  const outside=bt?S.filter(s=>!inside(poly,s.lon,s.lat)).length:0,w=[];
+  if(S.length<5)w.push(`Only ${S.length} stations: the isohyets are a rough interpolation. Use 5 or more gauges for a reliable basin average.`);
+  if(!bt)w.push('No basin boundary given, so the convex hull of the stations is used. Rainfall outside the outer gauges is not included. Enter your catchment boundary for a true basin average.');
+  if(outside)w.push(`${outside} station(s) lie outside your basin boundary. They still shape the surface but are not counted inside the basin.`);
+  if(rmse/arith>.25)w.push(`Leave-one-out RMSE is ${(rmse/arith*100).toFixed(0)}% of the mean rainfall (${rmse.toFixed(1)} mm). The interpolation cannot reproduce the extreme gauges well with this few stations, so the isohyets are indicative only.`);
+  if(bias<-15||bias>15)w.push(`The leave-one-out check shows a bias of ${bias.toFixed(1)}%. The surface is smoothing the real rainfall pattern, so treat the average with care.`);
+  A={S,poly,basinTxt,userPoly:!!bt,p,minLat,maxLat,minLon,maxLon,kx,ky,wk,hk,nx,ny,vals,ins,nIn,cellA,basinArea,minV,maxV,surf,dP,levels,bands,isoAvg,stA,thies,arith,loo,rmse,mae,bias,w};
+  $('warn').innerHTML=w.length?`<div class="info-box warning">${w.map(x=>'⚠️ '+x).join('<br>')}</div>`:'';
+  const vol=isoAvg/1000*basinArea;
+  $('summary').innerHTML=[['Isohyetal Average',isoAvg.toFixed(2)+' mm',''],['Thiessen Average',thies.toFixed(2)+' mm',''],['IDW Surface Mean',surf.toFixed(2)+' mm',''],['Arithmetic Mean',arith.toFixed(2)+' mm',''],['Basin Area',basinArea.toFixed(1)+' km²',''],['Rainfall Volume',vol.toFixed(2)+' Mm³','warn'],['Rainfall Range',minV.toFixed(0)+' – '+maxV.toFixed(0)+' mm',''],['Check RMSE',rmse.toFixed(1)+' mm',rmse/arith<.15?'good':'bad']]
+    .map(c=>`<div class="summary-card"><div class="summary-label">${c[0]}</div><div class="summary-value ${c[2]}" style="font-size:1.35rem">${c[1]}</div></div>`).join('');
+  const dif=isoAvg-arith;
+  $('formulaBox').innerHTML=`<div class="formula-label">Isohyetal method</div>P̄ = Σ [ (P<sub>i</sub> + P<sub>i+1</sub>)/2 × A<sub>i</sub> ] / Σ A<sub>i</sub><br>A<sub>i</sub> = basin area between two successive isohyets. The lowest and highest bands use the minimum and maximum of the surface as their outer value.<br><br><div class="formula-label">How it was computed</div>1. Rainfall surface: inverse distance weighting, power ${p}, distances in km (lon scaled by cos φ).<br>2. Basin: ${basinTxt}, area ${basinArea.toFixed(1)} km².<br>3. Isohyets every ${fmt(dP)} mm give ${bands.length} bands (table below).<br>4. P̄ = <strong>${isoAvg.toFixed(2)} mm</strong>, basin volume = P̄ × A = <strong>${vol.toFixed(2)} Mm³</strong>.<br><br><div class="formula-label">Comparison</div>Isohyetal ${isoAvg.toFixed(2)} | Thiessen ${thies.toFixed(2)} | IDW surface mean ${surf.toFixed(2)} | Arithmetic ${arith.toFixed(2)} mm<br>Isohyetal minus arithmetic: <strong>${dif.toFixed(2)} mm (${(dif/arith*100).toFixed(1)}%)</strong>`;
+  $('bandTable').tBodies[0].innerHTML=bands.map(b=>`<tr><td style="color:#38BDF8;font-weight:600">${fmt(b.lo)} – ${fmt(b.hi)}</td><td>${b.mean.toFixed(2)}</td><td>${b.area.toFixed(2)}</td><td>${(b.area/basinArea*100).toFixed(1)}%</td><td>${(b.mean*b.area).toFixed(1)}</td></tr>`).join('')+`<tr><td><strong>Total</strong></td><td><strong>${isoAvg.toFixed(2)}</strong></td><td><strong>${bands.reduce((s,b)=>s+b.area,0).toFixed(2)}</strong></td><td>100%</td><td>${bands.reduce((s,b)=>s+b.mean*b.area,0).toFixed(1)}</td></tr>`;
+  $('dataTable').tBodies[0].innerHTML=loo.map((s,i)=>`<tr><td>${i+1}</td><td>${esc(s.name)}</td><td style="color:#22D3EE;font-weight:600">${s.rainfall.toFixed(1)}</td><td>${s.lat.toFixed(4)}</td><td>${s.lon.toFixed(4)}</td><td>${stA[i].toFixed(1)}</td><td>${(stA[i]/basinArea*100).toFixed(1)}%</td><td>${s.pred.toFixed(1)}</td></tr>`).join('');
+  goToPage('pageResults');setTimeout(drawAll,600)}
+
+/* ===== Charts ===== */
+function nice(r){const p=10**Math.floor(Math.log10(r)),f=r/p;return(f<1.5?1:f<3?2:f<7?5:10)*p}
+function frame(id,title,xl,yl,x0,x1,y0,y1,xt){
+  const cv=$(id),c=cv.getContext('2d'),W=cv.width,H=cv.height,L=100,Rt=40,Tp=70,B=80;
+  const g=c.createLinearGradient(0,0,W,H);g.addColorStop(0,'#050a14');g.addColorStop(1,'#0a1423');c.fillStyle=g;c.fillRect(0,0,W,H);
+  const sy=nice((y1-y0)/6||1);y0=Math.floor(y0/sy)*sy;y1=Math.ceil(y1/sy)*sy;let tk=xt;
+  if(!tk){const sx=nice((x1-x0)/6||1);x0=Math.floor(x0/sx)*sx;x1=Math.ceil(x1/sx)*sx;tk=[];for(let v=x0;v<=x1+1e-9;v+=sx)tk.push({v,l:Math.round(v)})}
+  const px=x=>L+(x-x0)/(x1-x0)*(W-L-Rt),py=y=>H-B-(y-y0)/(y1-y0)*(H-Tp-B);
+  c.font='14px Times New Roman';c.lineWidth=1;
+  for(const t of tk){c.strokeStyle='rgba(56,189,248,.09)';c.beginPath();c.moveTo(px(t.v),py(y0));c.lineTo(px(t.v),py(y1));c.stroke();c.fillStyle='#94A3B8';c.textAlign='center';c.fillText(t.l,px(t.v),H-B+22)}
+  for(let v=y0;v<=y1+1e-9;v+=sy){c.strokeStyle='rgba(56,189,248,.09)';c.beginPath();c.moveTo(px(x0),py(v));c.lineTo(px(x1),py(v));c.stroke();c.fillStyle='#94A3B8';c.textAlign='right';c.fillText(Math.round(v),L-10,py(v)+5)}
+  c.strokeStyle='rgba(56,189,248,.5)';c.lineWidth=2;c.beginPath();c.moveTo(px(x0),py(y1));c.lineTo(px(x0),py(y0));c.lineTo(px(x1),py(y0));c.stroke();
+  c.fillStyle='#94A3B8';c.textAlign='center';c.font='15px Times New Roman';c.fillText(xl,(L+W-Rt)/2,H-22);
+  c.save();c.translate(28,(Tp+H-B)/2);c.rotate(-Math.PI/2);c.fillText(yl,0,0);c.restore();
+  c.fillStyle='#38BDF8';c.font='bold 21px Times New Roman';c.fillText(title,W/2,34);
+  return{c,px,py,L,Tp,W,Rt,H,B,x0,x1,y0,y1}}
+function legend(c,x,y,it){c.font='14px Times New Roman';c.textAlign='left';it.forEach((q,k)=>{c.fillStyle=q[0];if(q[2])c.fillRect(x-8,y+k*24-2,18,4);else{c.beginPath();c.arc(x,y+k*24,6,0,6.283);c.fill()}c.fillStyle='#CBD5E1';c.fillText(q[1],x+18,y+k*24+5)})}
+
+function drawAll(){if(!A)return;drawMap();drawBands();drawCmp();drawLoo()}
+function drawMap(){const cv=$('mapCanvas'),c=cv.getContext('2d'),W=cv.width,H=cv.height;
+  const g=c.createLinearGradient(0,0,W,H);g.addColorStop(0,'#050a14');g.addColorStop(1,'#0a1423');c.fillStyle=g;c.fillRect(0,0,W,H);
+  const{minLat,maxLat,minLon,maxLon,kx,ky,wk,hk,nx,ny,vals,ins,poly,levels,minV,maxV,S}=A,L=100,R=190,T=75,B=95,mw=W-L-R,mh=H-T-B,s=Math.min(mw/wk,mh/hk),ox=L+(mw-wk*s)/2,oy=T+(mh-hk*s)/2,cw=wk*s/nx,ch=hk*s/ny;
+  const px=lon=>ox+(lon-minLon)*kx*s,py=lat=>oy+(maxLat-lat)*ky*s;
+  c.save();c.beginPath();poly.forEach((q,i)=>i?c.lineTo(px(q.lon),py(q.lat)):c.moveTo(px(q.lon),py(q.lat)));c.closePath();c.clip();
+  for(let i=0;i<ny;i++)for(let j=0;j<nx;j++){c.fillStyle=col(maxV>minV?(vals[i][j]-minV)/(maxV-minV):.5);c.fillRect(ox+j*cw,oy+(ny-1-i)*ch,cw+.7,ch+.7)}
+  const gx=j=>ox+(j+.5)*cw,gy=i=>oy+(ny-1-i+.5)*ch,lab=[];
+  levels.forEach(lv=>{const seg=[];march(vals,nx,ny,lv,(a,b)=>seg.push([a,b]));c.strokeStyle='rgba(255,255,255,.85)';c.lineWidth=1.5;c.beginPath();seg.forEach(([a,b])=>{c.moveTo(gx(a[0]),gy(a[1]));c.lineTo(gx(b[0]),gy(b[1]))});c.stroke();
+    const sIn=seg.filter(q=>inside(poly,minLon+((q[0][0]+q[1][0])/2+.5)*(maxLon-minLon)/nx,minLat+((q[0][1]+q[1][1])/2+.5)*(maxLat-minLat)/ny));
+    [.3,.7].forEach(f=>{const q=sIn[Math.floor(sIn.length*f)];if(q)lab.push([lv,(gx(q[0][0])+gx(q[1][0]))/2,(gy(q[0][1])+gy(q[1][1]))/2])})});
+  c.restore();
+  c.strokeStyle='#FFFFFF';c.lineWidth=2.5;c.beginPath();poly.forEach((q,i)=>i?c.lineTo(px(q.lon),py(q.lat)):c.moveTo(px(q.lon),py(q.lat)));c.closePath();c.stroke();
+  c.font='bold 12px Times New Roman';c.textAlign='center';c.textBaseline='middle';lab.forEach(([v,x,y])=>{c.lineWidth=4;c.strokeStyle='rgba(5,10,20,.85)';c.strokeText(fmt(v),x,y);c.fillStyle='#FFFFFF';c.fillText(fmt(v),x,y)});
+  c.textBaseline='alphabetic';
+  S.forEach(st=>{const x=px(st.lon),y=py(st.lat);c.beginPath();c.arc(x,y,7,0,6.283);c.fillStyle='#FFD700';c.shadowColor='#FFD700';c.shadowBlur=12;c.fill();c.shadowBlur=0;c.strokeStyle='#0A1628';c.lineWidth=2;c.stroke();
+    const right=x<ox+wk*s*.7;c.font='bold 13px Times New Roman';c.textAlign=right?'left':'right';const tx=right?x+12:x-12,tt=`${st.name} · ${st.rainfall.toFixed(0)}`;c.lineWidth=4;c.strokeStyle='rgba(5,10,20,.9)';c.strokeText(tt,tx,y+4);c.fillStyle='#FFFFFF';c.fillText(tt,tx,y+4)});
+  c.strokeStyle='rgba(148,163,184,.6)';c.lineWidth=1;c.strokeRect(ox,oy,wk*s,hk*s);c.fillStyle='#94A3B8';c.font='13px Times New Roman';
+  const tk=(a,b)=>{const st=nice((b-a)/4),o=[];for(let v=Math.ceil(a/st)*st;v<=b+1e-9;v+=st)o.push(+v.toFixed(5));return o};
+  c.textAlign='right';tk(minLat,maxLat).forEach(v=>{c.fillText(v.toFixed(2)+'°N',ox-8,py(v)+4);c.beginPath();c.moveTo(ox-5,py(v));c.lineTo(ox,py(v));c.stroke()});
+  c.textAlign='center';tk(minLon,maxLon).forEach(v=>{c.fillText(v.toFixed(2)+'°E',px(v),oy+hk*s+20);c.beginPath();c.moveTo(px(v),oy+hk*s);c.lineTo(px(v),oy+hk*s+5);c.stroke()});
+  const sk=nice(wk/4),sx0=ox,sy0=H-32;c.strokeStyle='#E2E8F0';c.lineWidth=3;c.beginPath();c.moveTo(sx0,sy0);c.lineTo(sx0+sk*s,sy0);c.stroke();c.fillStyle='#E2E8F0';c.textAlign='left';c.fillText(sk+' km',sx0+sk*s+10,sy0+4);
+  c.fillStyle='#E2E8F0';c.beginPath();c.moveTo(ox+28,oy+14);c.lineTo(ox+20,oy+38);c.lineTo(ox+36,oy+38);c.closePath();c.fill();c.fillStyle='#FFFFFF';c.font='bold 14px Times New Roman';c.textAlign='center';c.fillText('N',ox+28,oy+54);
+  const bx=W-R+55,by=T+10,bh=mh*.75;for(let k=0;k<bh;k++){c.fillStyle=col(1-k/bh);c.fillRect(bx,by+k,22,2)}
+  c.strokeStyle='rgba(255,255,255,.4)';c.strokeRect(bx,by,22,bh);c.font='12px Times New Roman';c.textAlign='left';c.fillStyle='#CBD5E1';
+  const ty=v=>by+bh-(maxV>minV?(v-minV)/(maxV-minV):.5)*bh;levels.forEach(v=>{c.fillText(fmt(v),bx+28,ty(v)+4);c.beginPath();c.moveTo(bx+22,ty(v));c.lineTo(bx+26,ty(v));c.stroke()});
+  c.fillText(fmt(maxV)+' (max)',bx+28,by+4);c.fillText(fmt(minV)+' (min)',bx+28,by+bh+4);c.fillStyle='#94A3B8';c.fillText('Rainfall (mm)',bx-6,by-12);
+  c.fillStyle='#38BDF8';c.font='bold 21px Times New Roman';c.textAlign='center';c.fillText('Rainfall Isohyetal Map — '+A.basinTxt,W/2,36);
+  c.fillStyle='#94A3B8';c.font='13px Times New Roman';c.fillText(`Isohyets every ${fmt(A.dP)} mm · IDW power ${A.p}`,W/2,58)}
+function drawBands(){const{bands,basinArea,minV,maxV}=A,n=bands.length,hi=Math.max(...bands.map(b=>b.area))*1.2,st=Math.ceil(n/12);
+  const{c,px,py}=frame('bandCanvas','Basin Area by Isohyetal Band','Rainfall band (mm)','Area (km²)',.4,n+.6,0,hi,bands.map((b,i)=>({v:i+1,l:`${fmt(b.lo)}–${fmt(b.hi)}`})).filter((_,i)=>i%st===0));
+  const bw=(px(2)-px(1))*.62,base=py(0);
+  bands.forEach((b,i)=>{const x=px(i+1)-bw/2,y=py(b.area),cl=col(maxV>minV?(b.mean-minV)/(maxV-minV):.5);c.fillStyle=cl;c.shadowColor=cl;c.shadowBlur=10;c.fillRect(x,y,bw,base-y);c.shadowBlur=0;
+    c.fillStyle='#E2E8F0';c.font='bold 13px Times New Roman';c.textAlign='center';c.fillText((b.area/basinArea*100).toFixed(0)+'%',px(i+1),y-8)})}
+function drawCmp(){const m=[['Arithmetic mean',A.arith,'#94A3B8'],['Thiessen',A.thies,'#22D3EE'],['IDW surface mean',A.surf,'#A78BFA'],['Isohyetal',A.isoAvg,'#38BDF8']],hi=Math.max(...m.map(x=>x[1]))*1.3;
+  const{c,px,py}=frame('cmpCanvas','Basin Average Rainfall by Method','Method','Basin average rainfall (mm)',.4,4.6,0,hi,m.map((x,i)=>({v:i+1,l:x[0]})));
+  const bw=(px(2)-px(1))*.5,base=py(0);m.forEach((x,i)=>{const X=px(i+1)-bw/2,y=py(x[1]);const g=c.createLinearGradient(0,y,0,base);g.addColorStop(0,x[2]);g.addColorStop(1,x[2]+'55');c.fillStyle=g;c.shadowColor=x[2];c.shadowBlur=14;c.fillRect(X,y,bw,base-y);c.shadowBlur=0;
+    c.fillStyle='#E2E8F0';c.font='bold 17px Times New Roman';c.textAlign='center';c.fillText(x[1].toFixed(2)+' mm',px(i+1),y-26);c.font='13px Times New Roman';c.fillStyle='#94A3B8';c.fillText((x[1]>=A.isoAvg?'+':'')+((x[1]-A.isoAvg)/A.isoAvg*100).toFixed(1)+'% vs isohyetal',px(i+1),y-8)})}
+function drawLoo(){const e=A.loo,all=e.flatMap(q=>[q.rainfall,q.pred]),lo=Math.min(...all),hi=Math.max(...all),pd=(hi-lo)*.1||5;
+  const{c,px,py,L,Tp,x0,y0,x1,y1}=frame('looCanvas','IDW Check: Station Rainfall Predicted from the Other Stations','Observed rainfall (mm)','Predicted without that station (mm)',Math.max(0,lo-pd),hi+pd,Math.max(0,lo-pd),hi+pd),m=Math.min(x1,y1),m0=Math.max(x0,y0);
+  c.save();c.strokeStyle='#FFFFFF';c.lineWidth=1.5;c.setLineDash([3,6]);c.beginPath();c.moveTo(px(m0),py(m0));c.lineTo(px(m),py(m));c.stroke();c.restore();
+  e.forEach(q=>{c.beginPath();c.arc(px(q.rainfall),py(q.pred),7,0,6.283);c.fillStyle='rgba(56,189,248,.9)';c.shadowColor='#38BDF8';c.shadowBlur=10;c.fill();c.shadowBlur=0;c.fillStyle='#CBD5E1';c.font='12px Times New Roman';c.textAlign='left';c.fillText(q.name,px(q.rainfall)+10,py(q.pred)+4)});
+  legend(c,L+20,Tp+14,[['#38BDF8','Stations'],['#FFFFFF','1:1 line',1]]);c.fillStyle='#F59E0B';c.font='bold 14px Times New Roman';c.textAlign='left';
+  c.fillText(`RMSE = ${A.rmse.toFixed(1)} mm   MAE = ${A.mae.toFixed(1)} mm   Bias = ${A.bias.toFixed(1)}%`,L+20,Tp+80)}
+
+/* ===== Export ===== */
+/* ===== Export: chart PNGs, ZIP and Excel ===== */
+const CH=[['mapCanvas','Rainfall Isohyetal Map','isohyetal_map'],['bandCanvas','Basin Area by Isohyetal Band','band_areas'],['cmpCanvas','Method Comparison','method_comparison'],['looCanvas','Interpolation Check (leave-one-out)','idw_validation']];
+function dlBlob(b,name){const u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000)}
+const pngBytes=id=>{const b=atob($(id).toDataURL('image/png').split(',')[1]),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u};
+function dlChart(id,name){if(!A){msg('Run the estimation first.');return}$(id).toBlob(b=>dlBlob(b,'runoff_'+name+'.png'))}
+const CRCT=(()=>{const t=[];for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+const crc32=b=>{let c=0xFFFFFFFF;for(let i=0;i<b.length;i++)c=CRCT[(c^b[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0};
+function zip(files){const enc=new TextEncoder(),parts=[],cd=[];let off=0;const d=new Date(),dt=(d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1),dd=((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate();
+  for(const f of files){const nm=enc.encode(f.name),crc=crc32(f.data),sz=f.data.length;
+    const lh=new DataView(new ArrayBuffer(30));lh.setUint32(0,0x04034b50,true);lh.setUint16(4,20,true);lh.setUint16(6,0x0800,true);lh.setUint16(10,dt,true);lh.setUint16(12,dd,true);lh.setUint32(14,crc,true);lh.setUint32(18,sz,true);lh.setUint32(22,sz,true);lh.setUint16(26,nm.length,true);
+    parts.push(new Uint8Array(lh.buffer),nm,f.data);
+    const ch=new DataView(new ArrayBuffer(46));ch.setUint32(0,0x02014b50,true);ch.setUint16(4,20,true);ch.setUint16(6,20,true);ch.setUint16(8,0x0800,true);ch.setUint16(12,dt,true);ch.setUint16(14,dd,true);ch.setUint32(16,crc,true);ch.setUint32(20,sz,true);ch.setUint32(24,sz,true);ch.setUint16(28,nm.length,true);ch.setUint32(42,off,true);
+    cd.push(new Uint8Array(ch.buffer),nm);off+=30+nm.length+sz}
+  const cs=cd.reduce((t,a)=>t+a.length,0),e=new DataView(new ArrayBuffer(22));e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,cs,true);e.setUint32(16,off,true);
+  return new Blob([...parts,...cd,new Uint8Array(e.buffer)],{type:'application/zip'})}
+function saveChartsZip(){if(!A){msg('Run the estimation first.');return}
+  dlBlob(zip(CH.map(c=>({name:'runoff_'+c[2]+'.png',data:pngBytes(c[0])}))),'runoff_charts_'+Date.now()+'.zip');msg('Charts ZIP saved.')}
+const X='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',NS='http://schemas.openxmlformats.org/',RT=NS+'officeDocument/2006/relationships/';
+const esc=v=>String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const colL=n=>{let r='';n++;while(n>0){const m=(n-1)%26;r=String.fromCharCode(65+m)+r;n=Math.floor((n-1)/26)}return r};
+const tx=(v,s)=>({t:String(v),s:s||0}),nv=(v,s,f)=>({v:isFinite(v)?+v:0,s:s||0,f});
+function cellXml(r,c,x){if(x===null||x===undefined||x==='')return'';const ref=colL(c)+(r+1);
+  if(typeof x==='number')return`<c r="${ref}"><v>${x}</v></c>`;if(typeof x==='string')x=tx(x);
+  const st=x.s?` s="${x.s}"`:'';
+  if(x.t!==undefined)return`<c r="${ref}"${st} t="inlineStr"><is><t xml:space="preserve">${esc(x.t)}</t></is></c>`;
+  return`<c r="${ref}"${st}>${x.f?`<f>${esc(x.f)}</f>`:''}<v>${x.v}</v></c>`}
+function sheetXml(rows,widths,drawing){let rx='';for(let i=0;i<rows.length;i++){const r=rows[i]||[];rx+=`<row r="${i+1}">${r.map((x,j)=>cellXml(i,j,x)).join('')}</row>`}
+  return`${X}<worksheet xmlns="${NS}spreadsheetml/2006/main" xmlns:r="${RT.slice(0,-1)}">${widths?'<cols>'+widths.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join('')+'</cols>':''}<sheetData>${rx}</sheetData>${drawing?'<drawing r:id="rId1"/>':''}</worksheet>`}
+function saveXLSX(){
+  if(!A){msg('Run the analysis first.');return}
+  const{S,loo,bands,stA,basinArea}=A,n=S.length,nb=bands.length,E=new TextEncoder(),N1=n+1,B1=nb+1;
+  const sum=[[tx('Contour-Based Rainfall (Isohyetal Method)',5)],[tx('Generated: '+new Date().toLocaleString())],[tx('Parameter',1),tx('Value',1)],
+    [tx('Stations'),nv(n,0,`COUNT(Stations!C2:C${N1})`)],[tx('IDW power'),nv(A.p)],[tx('Isohyet interval (mm)'),nv(A.dP)],[tx('Basin'),tx(A.basinTxt)],[tx('Basin area (km2)'),nv(basinArea,2)],[tx('Grid cells inside basin'),nv(A.nIn)],[],
+    [tx('Result',1),tx('Value',1)],
+    [tx('Isohyetal average (mm)'),nv(A.isoAvg,6,`Bands!B${nb+3}`)],[tx('Thiessen average (mm)'),nv(A.thies,6,`SUM(Stations!H2:H${N1})`)],[tx('IDW surface mean (mm)'),nv(A.surf,6)],[tx('Arithmetic mean (mm)'),nv(A.arith,6,`AVERAGE(Stations!C2:C${N1})`)],
+    [tx('Minimum of surface (mm)'),nv(A.minV,6)],[tx('Maximum of surface (mm)'),nv(A.maxV,6)],[tx('Basin rainfall volume (Mm3)'),nv(A.isoAvg/1000*basinArea,3,'B12/1000*B8')],[],
+    [tx('Interpolation check (leave-one-out)',1),tx('Value',1)],[tx('RMSE (mm)'),nv(A.rmse,6)],[tx('MAE (mm)'),nv(A.mae,6)],[tx('Bias (%)'),nv(A.bias,6)],[],[tx('Notes',1)],
+    [tx('Isohyetal average and Thiessen average recalculate from the Bands and Stations sheets. The Charts sheet holds pictures of the original run.')]];
+  A.w.forEach(x=>sum.push([tx(x)]));
+  const st=[['#','Station','Rainfall (mm)','Latitude','Longitude','Thiessen area (km2)','Thiessen weight','Weight x P (mm)','IDW leave-one-out (mm)','Error (mm)'].map(h=>tx(h,1))];
+  loo.forEach((s,i)=>{const k=i+2;st.push([nv(i+1),tx(s.name),nv(s.rainfall,6),nv(s.lat,165-165+3),nv(s.lon,3),nv(stA[i],6),nv(stA[i]/basinArea,4,`F${k}/SUM(F$2:F$${N1})`),nv(s.rainfall*stA[i]/basinArea,6,`C${k}*G${k}`),nv(s.pred,6),nv(s.pred-s.rainfall,6,`I${k}-C${k}`)])});
+  const bd=[['Band (mm)','Lower (mm)','Upper (mm)','Mean (mm)','Area (km2)','Area %','Mean x Area'].map(h=>tx(h,1))];
+  bands.forEach((b,i)=>{const k=i+2;bd.push([tx(`${fmt(b.lo)} - ${fmt(b.hi)}`),nv(b.lo,6),nv(b.hi,6),nv(b.mean,6,`(B${k}+C${k})/2`),nv(b.area,6),nv(b.area/basinArea,4,`E${k}/SUM(E$2:E$${B1})`),nv(b.mean*b.area,6,`D${k}*E${k}`)])});
+  bd.push([tx('Total',5),null,null,null,nv(bands.reduce((s,b)=>s+b.area,0),6,`SUM(E2:E${B1})`),null,nv(bands.reduce((s,b)=>s+b.mean*b.area,0),6,`SUM(G2:G${B1})`)]);
+  bd.push([tx('Isohyetal average (mm)',5),nv(A.isoAvg,6,`G${nb+2}/E${nb+2}`)]);
+  const chRows=[],anch=[];let cur=0;
+  CH.forEach(c=>{const cv=$(c[0]),wd=960,h=Math.round(cv.height*wd/cv.width);chRows[cur]=[tx(c[1],5)];anch.push({row:cur+1,w:wd,h});cur+=Math.ceil(h/20)+3});
+  const pic=(a,i)=>`<xdr:oneCellAnchor><xdr:from><xdr:col>0</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${a.row}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:ext cx="${a.w*9525}" cy="${a.h*9525}"/><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${i+2}" name="Chart ${i+1}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="rId${i+1}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${a.w*9525}" cy="${a.h*9525}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:oneCellAnchor>`;
+  const drawing=`${X}<xdr:wsDr xmlns:xdr="${NS}drawingml/2006/spreadsheetDrawing" xmlns:a="${NS}drawingml/2006/main" xmlns:r="${RT.slice(0,-1)}">${anch.map(pic).join('')}</xdr:wsDr>`;
+  const rel=(id,type,target)=>`<Relationship Id="${id}" Type="${RT}${type}" Target="${target}"/>`,RS=`<Relationships xmlns="${NS}package/2006/relationships">`;
+  const ws=i=>`<Override PartName="/xl/worksheets/sheet${i}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`;
+  const xf=(nf,fo,fi)=>`<xf numFmtId="${nf}" fontId="${fo}" fillId="${fi}" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1"/>`;
+  const styles=`${X}<styleSheet xmlns="${NS}spreadsheetml/2006/main"><numFmts count="3"><numFmt numFmtId="164" formatCode="0.0"/><numFmt numFmtId="165" formatCode="0.0000"/><numFmt numFmtId="166" formatCode="0.0%"/></numFmts><fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font><font><b/><sz val="12"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF0369A1"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="7">${xf(0,0,0)}${xf(0,1,2)}${xf(164,0,0)}${xf(165,0,0)}${xf(166,0,0)}${xf(0,2,0)}${xf(2,0,0)}</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+  const parts=[['[Content_Types].xml',`${X}<Types xmlns="${NS}package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${ws(1)}${ws(2)}${ws(3)}${ws(4)}<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/></Types>`],
+    ['_rels/.rels',`${X}${RS}${rel('rId1','officeDocument','xl/workbook.xml')}</Relationships>`],
+    ['xl/workbook.xml',`${X}<workbook xmlns="${NS}spreadsheetml/2006/main" xmlns:r="${RT.slice(0,-1)}"><sheets><sheet name="Summary" sheetId="1" r:id="rId1"/><sheet name="Stations" sheetId="2" r:id="rId2"/><sheet name="Bands" sheetId="3" r:id="rId3"/><sheet name="Charts" sheetId="4" r:id="rId4"/></sheets><calcPr fullCalcOnLoad="1"/></workbook>`],
+    ['xl/_rels/workbook.xml.rels',`${X}${RS}${rel('rId1','worksheet','worksheets/sheet1.xml')}${rel('rId2','worksheet','worksheets/sheet2.xml')}${rel('rId3','worksheet','worksheets/sheet3.xml')}${rel('rId4','worksheet','worksheets/sheet4.xml')}${rel('rId5','styles','styles.xml')}</Relationships>`],
+    ['xl/styles.xml',styles],['xl/worksheets/sheet1.xml',sheetXml(sum,[38,30])],['xl/worksheets/sheet2.xml',sheetXml(st,[6,18,14,12,12,20,16,16,22,14])],['xl/worksheets/sheet3.xml',sheetXml(bd,[22,14,14,14,14,12,14])],['xl/worksheets/sheet4.xml',sheetXml(chRows,[14],true)],
+    ['xl/worksheets/_rels/sheet4.xml.rels',`${X}${RS}${rel('rId1','drawing','../drawings/drawing1.xml')}</Relationships>`],['xl/drawings/drawing1.xml',drawing],
+    ['xl/drawings/_rels/drawing1.xml.rels',`${X}${RS}${CH.map((c,i)=>rel('rId'+(i+1),'image',`../media/image${i+1}.png`)).join('')}</Relationships>`]].map(([name,x])=>({name,data:E.encode(x)}));
+  CH.forEach((c,i)=>parts.push({name:`xl/media/image${i+1}.png`,data:pngBytes(c[0])}));
+  dlBlob(new Blob([zip(parts)],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),'contour_rainfall_'+Date.now()+'.xlsx');msg('Excel file saved.')}
+function saveGrid(){if(!A){msg('Run the analysis first.');return}const{nx,ny,vals,ins,minLat,minLon,maxLat,maxLon}=A,dLon=(maxLon-minLon)/nx,dLat=(maxLat-minLat)/ny;let o='lat,lon,rainfall_mm\n';
+  for(let i=0;i<ny;i++)for(let j=0;j<nx;j++)if(ins[i][j])o+=`${(minLat+(i+.5)*dLat).toFixed(5)},${(minLon+(j+.5)*dLon).toFixed(5)},${vals[i][j].toFixed(2)}\n`;
+  dlBlob(new Blob([o],{type:'text/csv'}),'contour_grid_'+Date.now()+'.csv');msg('Grid CSV saved (cells inside the basin).')}
+function saveReport(){if(!A)return;const l='='.repeat(45);
+  let o=`${l}\n  CONTOUR-BASED RAINFALL ANALYSIS\n  Isohyetal Method\n${l}\n\nGenerated: ${new Date().toLocaleString()}\nStations: ${A.S.length}\nBasin: ${A.basinTxt}, area ${A.basinArea.toFixed(2)} km2\nIDW power: ${A.p}   Isohyet interval: ${fmt(A.dP)} mm\n\nIsohyetal average: ${A.isoAvg.toFixed(2)} mm\nThiessen average:  ${A.thies.toFixed(2)} mm\nIDW surface mean:  ${A.surf.toFixed(2)} mm\nArithmetic mean:   ${A.arith.toFixed(2)} mm\nBasin volume:      ${(A.isoAvg/1000*A.basinArea).toFixed(3)} Mm3\nLOO check: RMSE ${A.rmse.toFixed(2)} mm, MAE ${A.mae.toFixed(2)} mm, bias ${A.bias.toFixed(1)} %\n\nBand | Mean | Area km2 | %\n`;
+  A.bands.forEach(b=>o+=`${fmt(b.lo)}-${fmt(b.hi)} | ${b.mean.toFixed(2)} | ${b.area.toFixed(2)} | ${(b.area/A.basinArea*100).toFixed(1)}\n`);
+  o+='\nStation | Rainfall | Lat | Lon | Thiessen km2 | IDW check\n';A.loo.forEach((s,i)=>o+=`${s.name} | ${s.rainfall} | ${s.lat} | ${s.lon} | ${A.stA[i].toFixed(1)} | ${s.pred.toFixed(1)}\n`);
+  if(A.w.length)o+='\nWarnings:\n'+A.w.map(x=>'- '+x).join('\n')+'\n';
+  o+='\nDeveloped by Junaid Ali · Civil Engineering Research\n';dlBlob(new Blob([o],{type:'text/plain'}),'contour_rainfall_report_'+Date.now()+'.txt');msg('Report saved.')}
+
+/* ===== Init ===== */
+loadDemoData();
+</script>
+</body>
+</html>
