@@ -1,0 +1,1688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Basin-Wide Rainfall — Precipitation Analyzer</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Times New Roman', Times, serif; cursor: none; }
+  body { background: #0A1628; min-height: 100vh; overflow-x: hidden; color: #E2E8F0; position: relative; }
+
+  .cursor-dot {
+    position: fixed; width: 8px; height: 8px;
+    background: #38BDF8; border-radius: 50%;
+    pointer-events: none; z-index: 9999;
+    box-shadow: 0 0 20px #38BDF8, 0 0 40px #38BDF8;
+    transform: translate(-50%, -50%);
+  }
+  .cursor-ring {
+    position: fixed; width: 40px; height: 40px;
+    border: 2px solid rgba(56, 189, 248, 0.5);
+    border-radius: 50%;
+    pointer-events: none; z-index: 9998;
+    transform: translate(-50%, -50%);
+    transition: all 0.3s ease;
+  }
+  .cursor-ring.hover {
+    width: 70px; height: 70px;
+    border-color: rgba(34, 211, 238, 0.9);
+    background: rgba(34, 211, 238, 0.12);
+    box-shadow: 0 0 30px rgba(56, 189, 248, 0.4);
+  }
+  .cursor-ring.click {
+    width: 100px; height: 100px;
+    border-color: rgba(34, 211, 238, 1);
+    background: rgba(34, 211, 238, 0.2);
+    box-shadow: 0 0 60px rgba(56, 189, 248, 0.8);
+  }
+
+  .rain-canvas, .wave-canvas, #trailCanvas {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%; pointer-events: none;
+  }
+  .rain-canvas { z-index: 1; }
+  .wave-canvas { z-index: 2; }
+  #trailCanvas { z-index: 3; }
+
+  .gradient-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: 
+      radial-gradient(circle at 20% 30%, rgba(56,189,248,0.08) 0%, transparent 50%),
+      radial-gradient(circle at 80% 70%, rgba(14,165,233,0.06) 0%, transparent 50%);
+    z-index: 1; pointer-events: none;
+    animation: gradientShift 12s ease-in-out infinite alternate;
+  }
+  @keyframes gradientShift {
+    0% { transform: scale(1) rotate(0deg); opacity: 0.6; }
+    100% { transform: scale(1.15) rotate(2deg); opacity: 1; }
+  }
+  .grid-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background-image: 
+      linear-gradient(rgba(56,189,248,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(56,189,248,0.03) 1px, transparent 1px);
+    background-size: 80px 80px;
+    z-index: 1; pointer-events: none;
+    animation: gridPulse 8s ease-in-out infinite;
+  }
+  @keyframes gridPulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+
+  .page {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    overflow-y: auto; z-index: 10;
+    opacity: 0; visibility: hidden;
+    transform: translateX(100%) scale(0.95);
+    transition: all 0.7s cubic-bezier(0.23, 1, 0.32, 1);
+    padding: 30px 20px;
+  }
+  .page.active { opacity: 1; visibility: visible; transform: translateX(0) scale(1); }
+  .page.exit-left { transform: translateX(-100%) scale(0.95); opacity: 0; }
+
+  .container { max-width: 1300px; margin: 0 auto; position: relative; z-index: 10; }
+
+  .page-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 30px; padding: 20px 25px;
+    background: rgba(15, 23, 42, 0.7);
+    backdrop-filter: blur(20px);
+    border-radius: 18px;
+    border: 1px solid rgba(56,189,248,0.15);
+  }
+  .page-header h2 { font-size: 1.4rem; color: #38BDF8; letter-spacing: 1px; }
+
+  .back-btn {
+    padding: 10px 22px;
+    border: 1px solid rgba(56,189,248,0.3);
+    border-radius: 10px;
+    background: rgba(56,189,248,0.08);
+    color: #38BDF8;
+    font-size: 0.85rem;
+    cursor: none; font-weight: 600;
+    transition: all 0.3s ease;
+  }
+  .back-btn:hover {
+    background: rgba(56,189,248,0.2);
+    transform: translateY(-3px);
+    box-shadow: 0 10px 25px rgba(56,189,248,0.2);
+  }
+
+  .hero { text-align: center; padding: 60px 20px 40px; margin-bottom: 30px; }
+  .brand-badge {
+    display: inline-block; padding: 8px 22px;
+    border-radius: 30px;
+    background: rgba(56,189,248,0.08);
+    border: 1px solid rgba(56,189,248,0.3);
+    font-size: 0.72rem; letter-spacing: 4px;
+    text-transform: uppercase; color: #38BDF8;
+    margin-bottom: 24px;
+    animation: badgeFloat 3s ease-in-out infinite;
+  }
+  @keyframes badgeFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+  }
+  .hero h1 {
+    font-size: 3.5rem; font-weight: 900;
+    background: linear-gradient(90deg, #38BDF8, #0EA5E9, #22D3EE, #38BDF8);
+    background-size: 300% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: shine 5s linear infinite;
+    margin-bottom: 12px;
+    letter-spacing: -1px; line-height: 1.1;
+  }
+  @keyframes shine { to { background-position: 300% center; } }
+  .author-name {
+    font-size: 1.15rem; color: #38BDF8; font-weight: 700;
+    letter-spacing: 3px; margin-bottom: 16px;
+    animation: nameGlow 3s ease-in-out infinite;
+  }
+  @keyframes nameGlow {
+    0%, 100% { text-shadow: 0 0 15px rgba(56,189,248,0.5); }
+    50% { text-shadow: 0 0 35px rgba(56,189,248,0.9), 0 0 60px rgba(14,165,233,0.5); }
+  }
+  .hero .subtitle {
+    font-size: 1rem; color: #94A3B8;
+    letter-spacing: 2px; margin-bottom: 12px;
+    font-style: italic;
+  }
+  .hero .description {
+    color: #64748B; font-size: 0.95rem;
+    max-width: 720px; margin: 0 auto; line-height: 1.7;
+  }
+
+  .section-title {
+    font-size: 1.4rem; color: #E2E8F0;
+    margin: 40px 0 20px 0; padding-bottom: 12px;
+    border-bottom: 1px solid rgba(56,189,248,0.15);
+    display: flex; align-items: center;
+  }
+  .section-title::before {
+    content: ''; display: inline-block;
+    width: 5px; height: 24px;
+    background: linear-gradient(180deg, #38BDF8, #22D3EE);
+    margin-right: 14px; border-radius: 3px;
+    box-shadow: 0 0 12px rgba(56,189,248,0.5);
+  }
+
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px; margin-bottom: 40px;
+  }
+  .feature-card {
+    background: rgba(15, 23, 42, 0.7);
+    backdrop-filter: blur(20px);
+    border-radius: 14px;
+    padding: 24px;
+    border: 1px solid rgba(56,189,248,0.15);
+    transition: all 0.4s ease;
+    cursor: none;
+  }
+  .feature-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 20px 40px rgba(0,0,0,0.4), 0 0 30px rgba(56,189,248,0.15);
+    border-color: rgba(56,189,248,0.4);
+  }
+  .feature-card h4 {
+    font-size: 1.05rem; color: #38BDF8;
+    margin-bottom: 10px; letter-spacing: 0.5px;
+  }
+  .feature-card p {
+    font-size: 0.88rem; color: #94A3B8; line-height: 1.6;
+  }
+
+  .input-panel {
+    background: rgba(15, 23, 42, 0.7);
+    backdrop-filter: blur(20px);
+    border-radius: 16px;
+    padding: 28px;
+    border: 1px solid rgba(56,189,248,0.15);
+    margin-bottom: 24px;
+  }
+  .input-panel h3 {
+    font-size: 1rem; color: #38BDF8;
+    margin-bottom: 20px; letter-spacing: 1.5px;
+    text-transform: uppercase;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .input-panel h3::before {
+    content: ''; width: 4px; height: 18px;
+    background: linear-gradient(180deg, #38BDF8, #22D3EE);
+    border-radius: 2px;
+  }
+  .input-row {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 20px; margin-bottom: 16px;
+  }
+  label {
+    display: block; font-size: 0.78rem;
+    color: #94A3B8; margin-bottom: 8px;
+    text-transform: uppercase; letter-spacing: 1px;
+    font-weight: 600;
+  }
+  input, select, textarea {
+    width: 100%; padding: 12px 16px;
+    border-radius: 10px;
+    border: 1px solid rgba(56,189,248,0.2);
+    background: rgba(0, 0, 0, 0.4);
+    color: #E2E8F0; font-size: 0.95rem;
+    font-family: 'Times New Roman', serif;
+    outline: none; cursor: none;
+    transition: all 0.3s ease;
+  }
+  input:focus, select:focus, textarea:focus {
+    border-color: #38BDF8;
+    box-shadow: 0 0 20px rgba(56,189,248,0.3);
+    background: rgba(56,189,248,0.05);
+  }
+  textarea {
+    min-height: 180px;
+    resize: vertical;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    line-height: 1.7;
+  }
+
+  .upload-box {
+    border: 2px dashed rgba(56,189,248,0.4);
+    border-radius: 14px;
+    padding: 40px 20px;
+    text-align: center;
+    background: rgba(56,189,248,0.03);
+    transition: all 0.3s ease;
+    cursor: none;
+    margin-bottom: 20px;
+  }
+  .upload-box:hover {
+    border-color: #38BDF8;
+    background: rgba(56,189,248,0.08);
+    box-shadow: 0 0 30px rgba(56,189,248,0.15);
+  }
+  .upload-box .upload-icon { font-size: 2.5rem; margin-bottom: 10px; }
+  .upload-box p { color: #94A3B8; font-size: 0.9rem; margin-bottom: 15px; }
+  .upload-box input[type="file"] { display: none; }
+
+  .station-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+    background: rgba(0,0,0,0.3);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .station-table th {
+    background: rgba(56,189,248,0.15);
+    color: #38BDF8;
+    padding: 12px;
+    text-align: left;
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .station-table td {
+    padding: 12px;
+    border-bottom: 1px solid rgba(56,189,248,0.08);
+    color: #E2E8F0;
+    font-size: 0.9rem;
+  }
+  .station-table tr:hover td {
+    background: rgba(56,189,248,0.05);
+  }
+
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 18px; margin-bottom: 30px;
+  }
+  .summary-card {
+    background: rgba(15, 23, 42, 0.7);
+    backdrop-filter: blur(20px);
+    border-radius: 14px;
+    padding: 20px;
+    border: 1px solid rgba(56,189,248,0.15);
+    text-align: center;
+    transition: all 0.4s ease;
+  }
+  .summary-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 20px 40px rgba(0,0,0,0.4), 0 0 30px rgba(56,189,248,0.15);
+    border-color: rgba(56,189,248,0.4);
+  }
+  .summary-label {
+    font-size: 0.72rem; color: #94A3B8;
+    text-transform: uppercase; letter-spacing: 1px;
+    margin-bottom: 10px;
+  }
+  .summary-value {
+    font-size: 1.6rem; font-weight: 800;
+    color: #38BDF8;
+    font-family: 'Courier New', monospace;
+  }
+  .summary-value.good { color: #10B981; }
+  .summary-value.warn { color: #F59E0B; }
+  .summary-unit {
+    font-size: 0.75rem; color: #64748B; margin-top: 4px;
+  }
+
+  .canvas-wrapper {
+    background: rgba(5, 10, 20, 0.8);
+    backdrop-filter: blur(15px);
+    border-radius: 16px;
+    padding: 20px;
+    border: 1px solid rgba(56,189,248,0.2);
+    margin-bottom: 24px;
+  }
+  canvas.chart-canvas {
+    width: 100%; height: auto;
+    border-radius: 10px; display: block;
+  }
+
+  .formula-box {
+    background: rgba(34, 211, 238, 0.05);
+    border-left: 4px solid #22D3EE;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 24px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.95rem;
+    color: #38BDF8;
+    line-height: 1.7;
+  }
+  .formula-box .formula-label {
+    font-family: 'Times New Roman', serif;
+    color: #94A3B8;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+
+  .info-box {
+    background: rgba(34, 211, 238, 0.08);
+    border-left: 4px solid #22D3EE;
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+    color: #CBD5E1;
+    font-size: 0.92rem;
+    line-height: 1.7;
+  }
+  .info-box strong { color: #38BDF8; }
+  .info-box.warning {
+    background: rgba(245, 158, 11, 0.08);
+    border-left-color: #F59E0B;
+  }
+  .info-box.warning strong { color: #F59E0B; }
+  .info-box.success {
+    background: rgba(16, 185, 129, 0.08);
+    border-left-color: #10B981;
+  }
+  .info-box.success strong { color: #10B981; }
+
+  .liquid-btn {
+    position: relative; display: inline-block;
+    padding: 14px 36px; border: none;
+    border-radius: 50px;
+    background: linear-gradient(135deg, #38BDF8, #0EA5E9, #22D3EE, #38BDF8);
+    background-size: 300% 300%;
+    color: #0A1628; font-size: 0.9rem;
+    font-weight: 800; letter-spacing: 1.5px;
+    text-transform: uppercase; cursor: none;
+    overflow: hidden;
+    transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+    box-shadow: 0 10px 30px rgba(56, 189, 248, 0.3), inset 0 2px 8px rgba(255, 255, 255, 0.3);
+    animation: liquidFlow 4s ease infinite;
+    z-index: 1;
+    text-decoration: none;
+  }
+  @keyframes liquidFlow {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+  .liquid-btn::before {
+    content: '';
+    position: absolute; top: -50%; left: -50%;
+    width: 200%; height: 200%;
+    background: radial-gradient(circle, rgba(255,255,255,0.4) 0%, transparent 60%);
+    opacity: 0;
+    transition: opacity 0.5s ease, transform 0.6s ease;
+    transform: scale(0);
+    border-radius: 50%; z-index: -1;
+  }
+  .liquid-btn:hover::before {
+    opacity: 1; transform: scale(1.5);
+  }
+  .liquid-btn:hover {
+    background: linear-gradient(135deg, #22D3EE, #38BDF8, #A78BFA, #22D3EE);
+    background-size: 300% 300%;
+    animation: liquidFlow 1.5s ease infinite;
+    transform: translateY(-5px) scale(1.05);
+    box-shadow: 0 20px 50px rgba(56, 189, 248, 0.5), 0 0 80px rgba(34, 211, 238, 0.3);
+  }
+
+  .footer {
+    text-align: center; padding: 50px 20px 30px;
+    color: #475569; font-size: 0.85rem;
+    letter-spacing: 1px; font-style: italic;
+    border-top: 1px solid rgba(56,189,248,0.1);
+    margin-top: 60px;
+  }
+  .footer span { color: #38BDF8; font-weight: 600; }
+
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-track { background: #0A1628; }
+  ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, #38BDF8, #22D3EE); border-radius: 10px; }
+
+  /* touch devices: use the normal cursor */
+  @media (hover: none) {
+    * { cursor: auto !important; }
+    .cursor-dot, .cursor-ring { display: none; }
+  }
+
+  .station-row { grid-template-columns: 2fr 1fr 1fr auto; align-items: end; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 30px;
+    transform: translate(-50%, 30px); opacity: 0;
+    padding: 14px 24px; border-radius: 12px;
+    background: rgba(15,23,42,0.96); border: 1px solid rgba(56,189,248,0.5);
+    color: #E2E8F0; font-size: 0.92rem; max-width: 90vw;
+    z-index: 10000; pointer-events: none;
+    transition: all 0.35s ease; box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+  .toast.err  { border-color: #EF4444; color: #FCA5A5; }
+  .toast.warn { border-color: #F59E0B; color: #FCD34D; }
+
+  .chart-tip {
+    position: fixed; z-index: 9997; pointer-events: none; opacity: 0;
+    padding: 7px 12px; border-radius: 8px; font-size: 0.82rem;
+    background: rgba(15,23,42,0.96); border: 1px solid rgba(56,189,248,0.5);
+    color: #E2E8F0; transition: opacity 0.12s ease; white-space: nowrap;
+  }
+
+  .dl-btn {
+    margin-left: auto; padding: 6px 14px; border-radius: 8px;
+    border: 1px solid rgba(56,189,248,0.35); background: rgba(56,189,248,0.08);
+    color: #38BDF8; font-size: 0.75rem; font-weight: 700; letter-spacing: 1px; cursor: none;
+    transition: all 0.25s ease;
+  }
+  .dl-btn:hover { background: rgba(56,189,248,0.22); transform: translateY(-2px); }
+
+  .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .chart-grid .section-title { font-size: 1.05rem; margin-top: 16px; }
+
+  .table-scroll { overflow: auto; max-height: 520px; border-radius: 10px; }
+  .station-table thead th { position: sticky; top: 0; z-index: 2; background: #10223B; }
+  .station-table tr.total-row td { font-weight: 800; color: #38BDF8; background: rgba(56,189,248,0.1); }
+
+  .btn-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 30px; }
+  .btn-xlsx { background: linear-gradient(135deg, #10B981, #059669, #34D399, #10B981) !important; background-size: 300% 300% !important; color: #022c22 !important; }
+
+  @media (max-width: 900px) { .chart-grid { grid-template-columns: 1fr; } }
+  @media (max-width: 700px) {
+    .hero h1 { font-size: 2.2rem; }
+    .input-row { grid-template-columns: 1fr; }
+    .station-row { grid-template-columns: 1fr 1fr; }
+    .station-row > div:first-child { grid-column: 1 / -1; }
+    .page-header { flex-direction: column; gap: 12px; text-align: center; }
+  }
+</style>
+</head>
+<body>
+
+<div class="cursor-dot" id="cursorDot"></div>
+<div class="cursor-ring" id="cursorRing"></div>
+<div class="toast" id="toast"></div>
+<div class="chart-tip" id="chartTip"></div>
+<canvas id="rainCanvas" class="rain-canvas"></canvas>
+<canvas id="waveCanvas" class="wave-canvas"></canvas>
+<canvas id="trailCanvas"></canvas>
+<div class="gradient-overlay"></div>
+<div class="grid-overlay"></div>
+
+<!-- ═══ PAGE 1: DASHBOARD ═══ -->
+<div class="page active" id="pageDashboard">
+  <div class="container">
+    <div class="page-header">
+      <h2>Basin-Wide Rainfall</h2>
+      <a href="../index.html" class="back-btn">← Back to Dashboard</a>
+    </div>
+
+    <div class="hero">
+      <div class="brand-badge">Module 1 — Thiessen Polygon</div>
+      <h1>Basin-Wide Rainfall</h1>
+      <div class="author-name">by Junaid Ali</div>
+      <p class="subtitle">Area-Weighted Average from Multiple Stations</p>
+      <p class="description">
+        Calculate a single representative rainfall value for your entire basin using
+        the Thiessen Polygon method — the industry standard for multi-station analysis.
+      </p>
+    </div>
+
+    <div class="section-title">What This Module Does</div>
+    <div class="features-grid">
+      <div class="feature-card">
+        <h4>CSV Upload</h4>
+        <p>Upload hundreds of stations at once using a CSV with columns: station, rainfall, weight.</p>
+      </div>
+      <div class="feature-card">
+        <h4>Manual Entry</h4>
+        <p>Or enter station data manually. Add or remove stations dynamically.</p>
+      </div>
+      <div class="feature-card">
+        <h4>Thiessen Weights</h4>
+        <p>Area-weight coefficients for each station based on its polygon area.</p>
+      </div>
+      <div class="feature-card">
+        <h4>Dual Method Comparison</h4>
+        <p>Compare Thiessen Polygon vs Arithmetic Mean method.</p>
+      </div>
+    </div>
+
+    <div style="text-align: center; margin-top: 40px;">
+      <button class="liquid-btn" onclick="goToPage('pageInput')">
+        Start Analysis →
+      </button>
+    </div>
+
+    <div class="footer">
+      Developed by <span>Junaid Ali</span> · Civil Engineering Research
+    </div>
+  </div>
+</div>
+
+<!-- ═══ PAGE 2: INPUT ═══ -->
+<div class="page" id="pageInput">
+  <div class="container">
+    <div class="page-header">
+      <h2>Basin-Wide Rainfall — Input</h2>
+      <button class="back-btn" onclick="goToPage('pageDashboard')">← Back</button>
+    </div>
+
+    <div class="info-box">
+      <strong>Format:</strong> Upload a CSV with columns <strong>station, rainfall, weight</strong>.
+      Weight is optional — if missing, equal weights will be used. Weights can be fractions (sum = 1) <em>or</em> polygon areas (km², ha …) —
+      they are normalised automatically.
+      <a href="#" onclick="downloadTemplate(); return false;" style="color:#38BDF8; margin-left:6px; text-decoration:underline;">Download CSV template</a>
+    </div>
+
+    <div class="input-panel">
+      <h3>Option 1: Upload CSV File</h3>
+      <div class="upload-box" onclick="document.getElementById('csvFile').click()">
+        <div class="upload-icon">📁</div>
+        <p>Click to upload CSV file</p>
+        <p style="font-size: 0.78rem; color: #64748B;">Required: station, rainfall · Optional: weight / area · Comma, semicolon or tab separated</p>
+        <input type="file" id="csvFile" accept=".csv" onchange="handleCsvUpload(event)">
+      </div>
+      <div id="csvStatus" style="display: none; padding: 12px; background: rgba(34,211,238,0.1); border-radius: 8px; border-left: 3px solid #22D3EE; margin-top: 15px;">
+        <span style="color: #22D3EE; font-size: 0.9rem;">✅ CSV loaded: <span id="csvFileName"></span></span>
+      </div>
+    </div>
+
+    <div class="input-panel">
+      <h3>Option 2: Manual Entry</h3>
+      <div id="stationsContainer"></div>
+
+      <div style="display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap;">
+        <button class="liquid-btn" style="padding: 10px 24px; font-size: 0.82rem;" onclick="addStation()">
+          + Add Station
+        </button>
+        <button class="liquid-btn" style="padding: 10px 24px; font-size: 0.82rem; background: linear-gradient(135deg, #EF4444, #DC2626);" onclick="clearStations()">
+          Clear All
+        </button>
+        <button class="liquid-btn" style="padding: 10px 24px; font-size: 0.82rem; background: linear-gradient(135deg, #22D3EE, #0EA5E9);" onclick="loadDemoData()">
+          Load Demo Data
+        </button>
+      </div>
+    </div>
+
+    <div style="text-align: center; margin-top: 30px;">
+      <button class="liquid-btn" onclick="runAnalysis()">
+        Run Analysis →
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ PAGE 3: RESULTS ═══ -->
+<div class="page" id="pageResults">
+  <div class="container">
+    <div class="page-header">
+      <h2>Basin-Wide Rainfall — Results</h2>
+      <button class="back-btn" onclick="goToPage('pageInput')">← Back</button>
+    </div>
+
+    <div class="summary-grid" id="summary"></div>
+    <div id="weightNotes"></div>
+
+    <div class="section-title">Method Comparison</div>
+    <div class="formula-box" id="formulaBox"></div>
+
+    <div class="section-title">Station Contribution (Pie Chart)
+      <button class="dl-btn" onclick="downloadChart('pieCanvas','pie_station_contribution')">⬇ PNG</button></div>
+    <div class="canvas-wrapper"><canvas id="pieCanvas" class="chart-canvas" width="900" height="450"></canvas></div>
+
+    <div class="section-title">Rainfall at Each Station vs Basin Averages
+      <button class="dl-btn" onclick="downloadChart('barCanvas','bar_rainfall_per_station')">⬇ PNG</button></div>
+    <div class="canvas-wrapper"><canvas id="barCanvas" class="chart-canvas" width="900" height="450"></canvas></div>
+
+    <div class="chart-grid">
+      <div>
+        <div class="section-title">Contribution per Station
+          <button class="dl-btn" onclick="downloadChart('contribCanvas','bar_contribution')">⬇ PNG</button></div>
+        <div class="canvas-wrapper"><canvas id="contribCanvas" class="chart-canvas" width="720" height="460"></canvas></div>
+      </div>
+      <div>
+        <div class="section-title">Weight per Station
+          <button class="dl-btn" onclick="downloadChart('weightCanvas','bar_weights')">⬇ PNG</button></div>
+        <div class="canvas-wrapper"><canvas id="weightCanvas" class="chart-canvas" width="720" height="460"></canvas></div>
+      </div>
+      <div>
+        <div class="section-title">Cumulative Weight Curve
+          <button class="dl-btn" onclick="downloadChart('cumCanvas','line_cumulative_weight')">⬇ PNG</button></div>
+        <div class="canvas-wrapper"><canvas id="cumCanvas" class="chart-canvas" width="720" height="460"></canvas></div>
+      </div>
+      <div>
+        <div class="section-title">Thiessen vs Arithmetic
+          <button class="dl-btn" onclick="downloadChart('cmpCanvas','bar_method_comparison')">⬇ PNG</button></div>
+        <div class="canvas-wrapper"><canvas id="cmpCanvas" class="chart-canvas" width="720" height="460"></canvas></div>
+      </div>
+    </div>
+
+    <div class="section-title">Station Data Table</div>
+    <div class="input-panel">
+      <div class="table-scroll">
+        <table class="station-table" id="dataTable">
+          <thead>
+            <tr><th>#</th><th>Station</th><th>Rainfall (mm)</th><th>Weight</th><th>Contribution (mm)</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="liquid-btn btn-xlsx" onclick="saveExcel()">⬇ Excel (Data + All Charts)</button>
+      <button class="liquid-btn" onclick="downloadAllCharts()">⬇ All Charts (PNG)</button>
+      <button class="liquid-btn" onclick="saveCSV()">Save Data (CSV)</button>
+      <button class="liquid-btn" onclick="saveResults()">Save Report (TXT)</button>
+      <a href="../index.html" class="liquid-btn" style="background: linear-gradient(135deg, #0EA5E9, #38BDF8);">
+        Back to Dashboard
+      </a>
+    </div>
+
+    <div class="footer">
+      Developed by <span>Junaid Ali</span> · Civil Engineering Research
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══ CURSOR + TRAIL ═══ */
+const cursorDot = document.getElementById('cursorDot');
+const cursorRing = document.getElementById('cursorRing');
+const trailCanvas = document.getElementById('trailCanvas');
+const tCtx = trailCanvas.getContext('2d');
+let trailParticles = [];
+
+function resizeTrail() {
+  trailCanvas.width = window.innerWidth;
+  trailCanvas.height = window.innerHeight;
+}
+resizeTrail();
+window.addEventListener('resize', resizeTrail);
+
+document.addEventListener('mousemove', (e) => {
+  cursorDot.style.left = e.clientX + 'px';
+  cursorDot.style.top = e.clientY + 'px';
+  cursorRing.style.left = e.clientX + 'px';
+  cursorRing.style.top = e.clientY + 'px';
+  for (let i = 0; i < 2; i++) {
+    trailParticles.push({
+      x: e.clientX, y: e.clientY,
+      vx: (Math.random() - 0.5) * 3,
+      vy: (Math.random() - 0.5) * 3,
+      life: 1, size: Math.random() * 4 + 2,
+      color: Math.random() > 0.5 ? '56, 189, 248' : '34, 211, 238'
+    });
+  }
+});
+
+document.addEventListener('mousedown', () => {
+  cursorRing.classList.add('click');
+  for (let i = 0; i < 15; i++) {
+    trailParticles.push({
+      x: parseFloat(cursorDot.style.left),
+      y: parseFloat(cursorDot.style.top),
+      vx: (Math.random() - 0.5) * 8,
+      vy: (Math.random() - 0.5) * 8,
+      life: 1, size: Math.random() * 6 + 3,
+      color: '34, 211, 238'
+    });
+  }
+});
+document.addEventListener('mouseup', () => cursorRing.classList.remove('click'));
+
+const HOVER_SEL = 'button, .liquid-btn, input, .upload-box, .back-btn, .feature-card, textarea, select, a, canvas, .dl-btn';
+document.addEventListener('mouseover', (e) => { if (e.target.closest && e.target.closest(HOVER_SEL)) cursorRing.classList.add('hover'); });
+document.addEventListener('mouseout',  (e) => { if (e.target.closest && e.target.closest(HOVER_SEL)) cursorRing.classList.remove('hover'); });
+
+function animateTrail() {
+  tCtx.clearRect(0, 0, trailCanvas.width, trailCanvas.height);
+  trailParticles = trailParticles.filter(p => p.life > 0);
+  trailParticles.forEach(p => {
+    p.x += p.vx; p.y += p.vy;
+    p.life -= 0.025; p.size *= 0.97;
+    tCtx.beginPath();
+    tCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    tCtx.fillStyle = `rgba(${p.color}, ${p.life * 0.8})`;
+    tCtx.shadowColor = `rgba(${p.color}, ${p.life})`;
+    tCtx.shadowBlur = 15;
+    tCtx.fill();
+    tCtx.shadowBlur = 0;
+  });
+  requestAnimationFrame(animateTrail);
+}
+animateTrail();
+
+/* ═══ RAIN ═══ */
+const rainCanvas = document.getElementById('rainCanvas');
+const rCtx = rainCanvas.getContext('2d');
+let raindrops = [];
+function resizeRain() {
+  rainCanvas.width = window.innerWidth;
+  rainCanvas.height = window.innerHeight;
+}
+resizeRain();
+window.addEventListener('resize', resizeRain);
+class Raindrop {
+  constructor() { this.reset(); }
+  reset() {
+    this.x = Math.random() * rainCanvas.width;
+    this.y = Math.random() * -rainCanvas.height;
+    this.length = Math.random() * 20 + 10;
+    this.speed = Math.random() * 3 + 2;
+    this.opacity = Math.random() * 0.3 + 0.15;
+    this.width = Math.random() * 1.5 + 0.5;
+  }
+  update() { this.y += this.speed; if (this.y > rainCanvas.height + 20) this.reset(); }
+  draw() {
+    rCtx.beginPath();
+    rCtx.strokeStyle = `rgba(56, 189, 248, ${this.opacity})`;
+    rCtx.lineWidth = this.width;
+    rCtx.lineCap = 'round';
+    rCtx.moveTo(this.x, this.y);
+    rCtx.lineTo(this.x - 1, this.y + this.length);
+    rCtx.stroke();
+  }
+}
+for (let i = 0; i < 120; i++) raindrops.push(new Raindrop());
+function animateRain() {
+  rCtx.clearRect(0, 0, rainCanvas.width, rainCanvas.height);
+  raindrops.forEach(r => { r.update(); r.draw(); });
+  requestAnimationFrame(animateRain);
+}
+animateRain();
+
+/* ═══ WAVES ═══ */
+const waveCanvas = document.getElementById('waveCanvas');
+const wCtx = waveCanvas.getContext('2d');
+let waveOffset = 0;
+function resizeWave() {
+  waveCanvas.width = window.innerWidth;
+  waveCanvas.height = window.innerHeight;
+}
+resizeWave();
+window.addEventListener('resize', resizeWave);
+function drawWave(yOffset, amplitude, wavelength, color, speed, opacity) {
+  wCtx.beginPath();
+  wCtx.moveTo(0, waveCanvas.height);
+  for (let x = 0; x <= waveCanvas.width; x += 5) {
+    const y = yOffset + Math.sin((x + waveOffset * speed) / wavelength) * amplitude;
+    wCtx.lineTo(x, y);
+  }
+  wCtx.lineTo(waveCanvas.width, waveCanvas.height);
+  wCtx.closePath();
+  wCtx.fillStyle = color;
+  wCtx.globalAlpha = opacity;
+  wCtx.fill();
+  wCtx.globalAlpha = 1;
+}
+function animateWaves() {
+  wCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
+  drawWave(waveCanvas.height - 60, 25, 200, '#0EA5E9', 1, 0.15);
+  drawWave(waveCanvas.height - 40, 30, 250, '#38BDF8', 0.8, 0.12);
+  drawWave(waveCanvas.height - 20, 20, 180, '#22D3EE', 1.2, 0.10);
+  waveOffset += 1;
+  requestAnimationFrame(animateWaves);
+}
+animateWaves();
+
+/* ═══ HELPERS ═══ */
+const escHtml = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+const fmt = (v, d = 2) => (isFinite(v) ? Number(v).toFixed(d) : '0.00');
+
+let toastTimer = null;
+function toast(msg, type = 'ok') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3800);
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+const stamp = () => new Date().toISOString().slice(0, 10);
+
+/* ═══ NAVIGATION ═══ */
+let currentPage = 'pageDashboard';
+let navBusy = false;
+function goToPage(pageId) {
+  if (navBusy || pageId === currentPage) return;
+  navBusy = true;
+  const current = document.getElementById(currentPage);
+  const next = document.getElementById(pageId);
+  current.classList.remove('active');
+  current.classList.add('exit-left');
+  setTimeout(() => {
+    current.classList.remove('exit-left');
+    next.classList.add('active');
+    currentPage = pageId;
+    next.scrollTop = 0;
+    navBusy = false;
+  }, 500);
+}
+
+/* ═══ STATION MANAGEMENT ═══ */
+let stations = [
+  { name: 'Station 1', rainfall: 85, weight: 0.30 },
+  { name: 'Station 2', rainfall: 92, weight: 0.25 },
+  { name: 'Station 3', rainfall: 78, weight: 0.28 },
+  { name: 'Station 4', rainfall: 68, weight: 0.17 }
+];
+
+function renderStations() {
+  const container = document.getElementById('stationsContainer');
+  container.innerHTML = '';
+  if (stations.length === 0) {
+    container.innerHTML = '<p style="color:#64748B; font-size:0.9rem;">No stations yet — add one, upload a CSV, or load demo data.</p>';
+    return;
+  }
+  stations.forEach((st, i) => {
+    const row = document.createElement('div');
+    row.className = 'input-row station-row';
+    row.innerHTML = `
+      <div>
+        <label>Station ${i + 1} — Name</label>
+        <input type="text" value="${escHtml(st.name)}" oninput="updateStation(${i}, 'name', this.value)">
+      </div>
+      <div>
+        <label>Rainfall (mm)</label>
+        <input type="number" min="0" step="any" value="${isNaN(st.rainfall) ? '' : st.rainfall}" oninput="updateStation(${i}, 'rainfall', this.value)">
+      </div>
+      <div>
+        <label>Weight / Area</label>
+        <input type="number" min="0" step="any" value="${isNaN(st.weight) ? '' : st.weight}" oninput="updateStation(${i}, 'weight', this.value)">
+      </div>
+      <div>
+        <button class="back-btn" style="padding: 12px 14px; color: #EF4444; border-color: rgba(239,68,68,0.4);" onclick="removeStation(${i})" title="Remove station">✕</button>
+      </div>
+    `;
+    container.appendChild(row);
+  });
+}
+
+function updateStation(i, field, value) {
+  if (!stations[i]) return;
+  stations[i][field] = field === 'name' ? value : parseFloat(value);
+}
+
+function addStation() {
+  stations.push({ name: `Station ${stations.length + 1}`, rainfall: 0, weight: 0.1 });
+  renderStations();
+}
+function removeStation(i) { stations.splice(i, 1); renderStations(); }
+function clearStations() {
+  if (confirm('Clear all stations?')) {
+    stations = [];
+    document.getElementById('csvStatus').style.display = 'none';
+    renderStations();
+  }
+}
+function loadDemoData() {
+  stations = [
+    { name: 'Lahore', rainfall: 85, weight: 0.25 },
+    { name: 'Faisalabad', rainfall: 92, weight: 0.20 },
+    { name: 'Multan', rainfall: 78, weight: 0.18 },
+    { name: 'Rawalpindi', rainfall: 105, weight: 0.15 },
+    { name: 'Peshawar', rainfall: 88, weight: 0.12 },
+    { name: 'Quetta', rainfall: 45, weight: 0.10 }
+  ];
+  renderStations();
+}
+
+/* ═══ CSV ═══ */
+function parseCSV(text) {
+  text = text.replace(/^\uFEFF/, '');
+  const firstLine = text.split(/\r?\n/).find(l => l.trim()) || '';
+  const cand = [',', ';', '\t'];
+  const delim = cand.map(d => [d, firstLine.split(d).length]).sort((a, b) => b[1] - a[1])[0][0];
+  const rows = []; let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) {
+      if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; }
+      else cell += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === delim) { row.push(cell); cell = ''; }
+    else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && text[i + 1] === '\n') i++;
+      row.push(cell); cell = '';
+      if (row.some(c => c.trim() !== '')) rows.push(row);
+      row = [];
+    } else cell += ch;
+  }
+  row.push(cell);
+  if (row.some(c => c.trim() !== '')) rows.push(row);
+  return { rows: rows.map(r => r.map(c => c.trim())), delim };
+}
+
+function handleCsvUpload(event) {
+  const input = event.target;
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onerror = () => { toast('Could not read the file.', 'err'); input.value = ''; };
+  reader.onload = (e) => {
+    try {
+      const { rows, delim } = parseCSV(e.target.result);
+      if (rows.length < 1) { toast('CSV file is empty or invalid.', 'err'); return; }
+      const num = v => { if (v === undefined || v === '') return NaN; v = String(v).replace(/\s/g, ''); if (delim !== ',') v = v.replace(',', '.'); return /^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(v) ? parseFloat(v) : NaN; };
+      let nameIdx = 0, rainIdx = 1, weightIdx = 2, start = 0;
+      const hasHeader = rows[0].length >= 2 && isNaN(num(rows[0][1]));
+      if (hasHeader) {
+        start = 1;
+        const used = new Set();
+        const find = (re) => { const i = rows[0].findIndex((c, k) => !used.has(k) && re.test(c.toLowerCase())); if (i >= 0) used.add(i); return i; };
+        const r = find(/rain|precip|depth|mm/), w = find(/weight|area|coef|wt/), n = find(/station|name|site|gauge/);
+        if (r >= 0) rainIdx = r; if (w >= 0) weightIdx = w; if (n >= 0) nameIdx = n;
+        if (r < 0 && w < 0 && n < 0) { nameIdx = 0; rainIdx = 1; weightIdx = 2; }
+        else {
+          const taken = [r, w, n].filter(x => x >= 0);
+          const free = [0, 1, 2, 3].filter(x => !taken.includes(x));
+          if (n < 0) nameIdx = free.shift() ?? 0;
+          if (r < 0) rainIdx = free.shift() ?? 1;
+          if (w < 0) weightIdx = free.shift() ?? 2;
+        }
+      }
+      const out = []; let skipped = 0;
+      for (let i = start; i < rows.length; i++) {
+        const p = rows[i];
+        const rain = num(p[rainIdx]);
+        if (isNaN(rain) || rain < 0) { skipped++; continue; }
+        const w = num(p[weightIdx]);
+        out.push({ name: p[nameIdx] || `Station ${out.length + 1}`, rainfall: rain, weight: isNaN(w) || w < 0 ? 0 : w });
+      }
+      if (out.length === 0) { toast('No valid rows found. Expected columns: station, rainfall, weight.', 'err'); return; }
+      stations = out;
+      renderStations();
+      document.getElementById('csvStatus').style.display = 'block';
+      document.getElementById('csvFileName').textContent = `${file.name} — ${out.length} stations loaded` + (skipped ? ` (${skipped} invalid rows skipped)` : '');
+      toast(`CSV loaded: ${out.length} stations` + (skipped ? `, ${skipped} skipped` : ''), skipped ? 'warn' : 'ok');
+    } catch (err) {
+      toast('CSV parsing failed: ' + err.message, 'err');
+    } finally {
+      input.value = '';           // allows re-uploading the same file
+    }
+  };
+  reader.readAsText(file);
+}
+
+function downloadTemplate() {
+  const csv = 'station,rainfall,weight\nLahore,85,0.25\nFaisalabad,92,0.20\nMultan,78,0.18\nRawalpindi,105,0.15\nPeshawar,88,0.12\nQuetta,45,0.10\n';
+  downloadBlob(new Blob([csv], { type: 'text/csv' }), 'thiessen_template.csv');
+}
+
+/* ═══ ANALYSIS ═══ */
+let analysisData = null;
+
+function runAnalysis() {
+  if (stations.length === 0) { toast('Please add at least one station or upload a CSV file.', 'err'); return; }
+
+  const bad = [];
+  stations.forEach((s, i) => {
+    if (isNaN(s.rainfall) || s.rainfall < 0) bad.push(`Station ${i + 1} (${s.name || 'unnamed'}): rainfall`);
+    if (s.weight !== undefined && !isNaN(s.weight) && s.weight < 0) bad.push(`Station ${i + 1} (${s.name || 'unnamed'}): negative weight`);
+  });
+  if (bad.length) { toast('Please fix: ' + bad.slice(0, 3).join('; ') + (bad.length > 3 ? ` … (+${bad.length - 3} more)` : ''), 'err'); return; }
+
+  const clean = stations.map((s, i) => ({ name: (s.name || '').trim() || `Station ${i + 1}`, rainfall: s.rainfall, weight: isNaN(s.weight) ? 0 : s.weight }));
+  const totalWeight = clean.reduce((t, s) => t + s.weight, 0);
+  const useEqualWeights = totalWeight === 0;
+  const zeroWeightCount = useEqualWeights ? 0 : clean.filter(s => s.weight === 0).length;
+
+  const processedStations = clean.map(st => {
+    const w = useEqualWeights ? 1 / clean.length : st.weight / totalWeight;
+    return { name: st.name, rainfall: st.rainfall, rawWeight: st.weight, weight: w, contribution: st.rainfall * w };
+  });
+
+  const thiessenAvg = processedStations.reduce((s, st) => s + st.contribution, 0);
+  const arithmeticAvg = clean.reduce((s, st) => s + st.rainfall, 0) / clean.length;
+  const maxRain = clean.reduce((m, s) => Math.max(m, s.rainfall), -Infinity);
+  const minRain = clean.reduce((m, s) => Math.min(m, s.rainfall), Infinity);
+
+  analysisData = { stations: processedStations, thiessenAvg, arithmeticAvg, maxRain, minRain, totalStations: clean.length, useEqualWeights, totalWeight };
+
+  document.getElementById('summary').innerHTML = `
+    <div class="summary-card"><div class="summary-label">Thiessen Average</div><div class="summary-value">${fmt(thiessenAvg)}</div><div class="summary-unit">mm</div></div>
+    <div class="summary-card"><div class="summary-label">Arithmetic Mean</div><div class="summary-value warn">${fmt(arithmeticAvg)}</div><div class="summary-unit">mm</div></div>
+    <div class="summary-card"><div class="summary-label">Stations</div><div class="summary-value">${clean.length}</div></div>
+    <div class="summary-card"><div class="summary-label">Rainfall Range</div><div class="summary-value" style="font-size: 1.1rem;">${fmt(minRain, 1)} – ${fmt(maxRain, 1)}</div><div class="summary-unit">mm</div></div>
+  `;
+
+  const diff = Math.abs(thiessenAvg - arithmeticAvg);
+  const diffPct = arithmeticAvg > 0 ? (diff / arithmeticAvg * 100).toFixed(2) : '0.00';
+
+  const notes = [];
+  if (useEqualWeights) notes.push('Weights not provided — equal weights used (Thiessen = Arithmetic).');
+  else {
+    if (Math.abs(totalWeight - 1) > 0.005) notes.push(`Input weights sum to ${totalWeight.toFixed(4)} (not 1) — they were normalised automatically (Wi = weight ÷ Σweights). This is correct if you entered polygon areas.`);
+    if (zeroWeightCount) notes.push(`${zeroWeightCount} station(s) have weight 0 and contribute nothing to the basin average.`);
+  }
+  document.getElementById('weightNotes').innerHTML = notes.map(n => `<div class="info-box warning"><strong>⚠ Note:</strong> ${escHtml(n)}</div>`).join('');
+
+  document.getElementById('formulaBox').innerHTML = `
+    <div class="formula-label">Thiessen Polygon Formula</div>
+    P̄ = Σ(Wi × Pi) &nbsp;&nbsp; where &nbsp; Wi = Ai / ΣA
+    <br><br>
+    <div class="formula-label">Calculation</div>
+    ${processedStations.slice(0, 3).map(s => `(${s.weight.toFixed(3)} × ${fmt(s.rainfall)})`).join(' + ')}${processedStations.length > 3 ? ' + …' : ''} = <strong>${fmt(thiessenAvg)} mm</strong>
+    <br><br>
+    <div class="formula-label">Comparison</div>
+    Arithmetic Mean: ${fmt(arithmeticAvg)} mm<br>
+    Difference: ${fmt(diff)} mm (${diffPct}%)
+  `;
+
+  const tbody = document.querySelector('#dataTable tbody');
+  tbody.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  processedStations.forEach((s, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${i + 1}</td>
+      <td>${escHtml(s.name)}</td>
+      <td>${fmt(s.rainfall)}</td>
+      <td>${s.weight.toFixed(4)}</td>
+      <td style="color: #22D3EE; font-weight: 600;">${fmt(s.contribution)}</td>`;
+    frag.appendChild(tr);
+  });
+  tbody.appendChild(frag);
+  tbody.insertAdjacentHTML('beforeend', `<tr class="total-row"><td></td><td>TOTAL</td><td></td><td>${processedStations.reduce((t, s) => t + s.weight, 0).toFixed(4)}</td><td>${fmt(thiessenAvg)}</td></tr>`);
+
+  goToPage('pageResults');
+  drawAllCharts();
+}
+
+/* ═══ CHART ENGINE ═══ */
+const CHART_COLORS = ['#38BDF8', '#22D3EE', '#A78BFA', '#F59E0B', '#10B981', '#EF4444', '#EC4899', '#6366F1', '#94A3B8'];
+const FONT = 'Times New Roman, serif';
+
+function setupCanvas(id) {
+  const canvas = document.getElementById(id);
+  const W = parseInt(canvas.dataset.w || canvas.getAttribute('width'));
+  const H = parseInt(canvas.dataset.h || canvas.getAttribute('height'));
+  canvas.dataset.w = W; canvas.dataset.h = H;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const bg = ctx.createLinearGradient(0, 0, W, H);
+  bg.addColorStop(0, '#050A14'); bg.addColorStop(1, '#0A1423');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  canvas._hits = [];
+  return { canvas, ctx, W, H };
+}
+
+function niceTicks(max, count = 5) {
+  if (!(max > 0)) max = 1;
+  const raw = max / count, mag = Math.pow(10, Math.floor(Math.log10(raw))), n = raw / mag;
+  const step = (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * mag;
+  const top = Math.ceil(max / step - 1e-9) * step;
+  const ticks = []; for (let v = 0; v <= top + step / 1000; v += step) ticks.push(+v.toFixed(10));
+  return { ticks, top };
+}
+
+function chartTitle(ctx, W, text) {
+  ctx.fillStyle = '#38BDF8'; ctx.font = `bold 18px ${FONT}`; ctx.textAlign = 'center';
+  ctx.fillText(text, W / 2, 28);
+}
+
+function drawFrame(ctx, W, H, pad, top, tickInfo, yLabel, valFmt) {
+  ctx.font = `12px ${FONT}`; ctx.textAlign = 'right';
+  tickInfo.ticks.forEach(t => {
+    const y = H - pad.b - (t / tickInfo.top) * (H - pad.b - pad.t);
+    ctx.strokeStyle = t === 0 ? 'rgba(56,189,248,0.5)' : 'rgba(56,189,248,0.10)';
+    ctx.lineWidth = t === 0 ? 1.5 : 1;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke();
+    ctx.fillStyle = '#94A3B8'; ctx.fillText(valFmt(t), pad.l - 8, y + 4);
+  });
+  if (yLabel) {
+    ctx.save(); ctx.translate(16, (pad.t + H - pad.b) / 2); ctx.rotate(-Math.PI / 2);
+    ctx.fillStyle = '#64748B'; ctx.font = `13px ${FONT}`; ctx.textAlign = 'center'; ctx.fillText(yLabel, 0, 0); ctx.restore();
+  }
+}
+
+function drawXLabels(ctx, labels, xs, W, H, pad, slot) {
+  const rotate = labels.some(l => l.length > 6) || labels.length > 8;
+  const maxLen = rotate ? 14 : 10;
+  const every = Math.max(1, Math.ceil(labels.length / (rotate ? 40 : 14)));
+  ctx.fillStyle = '#CBD5E1'; ctx.font = `11px ${FONT}`;
+  labels.forEach((l, i) => {
+    if (i % every) return;
+    const t = l.length > maxLen ? l.slice(0, maxLen - 1) + '…' : l;
+    const x = xs[i];
+    ctx.save();
+    ctx.translate(x, H - pad.b + 14);
+    if (rotate) { ctx.rotate(-Math.PI / 4); ctx.textAlign = 'right'; } else ctx.textAlign = 'center';
+    ctx.fillText(t, 0, 0);
+    ctx.restore();
+  });
+}
+
+/* items: [{label, value, color?, tip?}] ; opts: {title, yLabel, color, valFmt, lines:[{value,label,color,dash}], note} */
+function drawBars(id, items, opts) {
+  const { canvas, ctx, W, H } = setupCanvas(id);
+  const rotateSpace = items.some(i => i.label.length > 6) || items.length > 8;
+  const pad = { l: 64, r: 24, t: 56, b: rotateSpace ? 92 : 56 };
+  const lineMax = (opts.lines || []).reduce((m, l) => Math.max(m, l.value), 0);
+  const maxVal = Math.max(items.reduce((m, i) => Math.max(m, i.value), 0), lineMax) * 1.1;
+  const tk = niceTicks(maxVal);
+  const vf = opts.valFmt || (v => (Math.abs(v) >= 100 ? v.toFixed(0) : +v.toFixed(2)));
+  chartTitle(ctx, W, opts.title);
+  drawFrame(ctx, W, H, pad, 0, tk, opts.yLabel, vf);
+
+  const plotW = W - pad.l - pad.r, slot = plotW / items.length, bw = Math.min(slot * 0.68, 70);
+  const xs = [];
+  items.forEach((it, i) => {
+    const cx = pad.l + slot * i + slot / 2; xs.push(cx);
+    const h = (it.value / tk.top) * (H - pad.t - pad.b), y = H - pad.b - h;
+    const col = it.color || opts.color || '#38BDF8';
+    const g = ctx.createLinearGradient(0, y, 0, H - pad.b);
+    g.addColorStop(0, col); g.addColorStop(1, col + '88');
+    ctx.fillStyle = g; ctx.shadowColor = col; ctx.shadowBlur = items.length > 30 ? 0 : 8;
+    ctx.fillRect(cx - bw / 2, y, bw, Math.max(h, 0)); ctx.shadowBlur = 0;
+    if (items.length <= 16) {
+      ctx.fillStyle = '#E2E8F0'; ctx.font = `bold 11px ${FONT}`; ctx.textAlign = 'center';
+      ctx.fillText(vf(it.value), cx, y - 6);
+    }
+    canvas._hits.push({ x: cx - bw / 2, y, w: bw, h: Math.max(h, 2), text: it.tip || `${it.label}: ${vf(it.value)}` });
+  });
+  drawXLabels(ctx, items.map(i => i.label), xs, W, H, pad, slot);
+
+  (opts.lines || []).forEach((ln, k) => {
+    const y = H - pad.b - (ln.value / tk.top) * (H - pad.t - pad.b);
+    ctx.strokeStyle = ln.color; ctx.lineWidth = 2; ctx.setLineDash(ln.dash ? [8, 5] : []);
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke(); ctx.setLineDash([]);
+  });
+  // legend for lines
+  if (opts.lines && opts.lines.length) {
+    let lx = W - pad.r - 10; ctx.font = `12px ${FONT}`; ctx.textAlign = 'right';
+    [...opts.lines].reverse().forEach(ln => {
+      const label = `${ln.label}: ${vf(ln.value)}`;
+      const tw = ctx.measureText(label).width;
+      ctx.fillStyle = '#E2E8F0'; ctx.fillText(label, lx, 46);
+      ctx.strokeStyle = ln.color; ctx.lineWidth = 3; ctx.setLineDash(ln.dash ? [6, 4] : []);
+      ctx.beginPath(); ctx.moveTo(lx - tw - 30, 42); ctx.lineTo(lx - tw - 8, 42); ctx.stroke(); ctx.setLineDash([]);
+      lx -= tw + 44;
+    });
+  }
+  if (opts.note) { ctx.fillStyle = '#64748B'; ctx.font = `italic 11px ${FONT}`; ctx.textAlign = 'left'; ctx.fillText(opts.note, pad.l, H - 6); }
+}
+
+function drawLineChart(id, items, opts) {
+  const { canvas, ctx, W, H } = setupCanvas(id);
+  const rotateSpace = items.some(i => i.label.length > 6) || items.length > 8;
+  const pad = { l: 64, r: 28, t: 56, b: rotateSpace ? 92 : 56 };
+  const tk = niceTicks(opts.max || Math.max(...items.map(i => i.value)) * 1.05, 5);
+  const vf = opts.valFmt || (v => v.toFixed(2));
+  chartTitle(ctx, W, opts.title);
+  drawFrame(ctx, W, H, pad, 0, tk, opts.yLabel, vf);
+  const plotW = W - pad.l - pad.r, slot = plotW / items.length;
+  const pts = items.map((it, i) => ({ x: pad.l + slot * i + slot / 2, y: H - pad.b - (it.value / tk.top) * (H - pad.t - pad.b), it }));
+  // area
+  const area = ctx.createLinearGradient(0, pad.t, 0, H - pad.b);
+  area.addColorStop(0, 'rgba(167,139,250,0.35)'); area.addColorStop(1, 'rgba(167,139,250,0.02)');
+  ctx.beginPath(); ctx.moveTo(pts[0].x, H - pad.b);
+  pts.forEach(p => ctx.lineTo(p.x, p.y)); ctx.lineTo(pts[pts.length - 1].x, H - pad.b); ctx.closePath();
+  ctx.fillStyle = area; ctx.fill();
+  ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+  ctx.strokeStyle = opts.color || '#A78BFA'; ctx.lineWidth = 3; ctx.shadowColor = opts.color || '#A78BFA'; ctx.shadowBlur = 8; ctx.stroke(); ctx.shadowBlur = 0;
+  pts.forEach(p => {
+    ctx.beginPath(); ctx.arc(p.x, p.y, items.length > 30 ? 2.5 : 4.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#0A1628'; ctx.fill(); ctx.strokeStyle = opts.color || '#A78BFA'; ctx.lineWidth = 2; ctx.stroke();
+    canvas._hits.push({ x: p.x - 8, y: p.y - 8, w: 16, h: 16, text: `${p.it.label}: ${vf(p.it.value)}` });
+  });
+  drawXLabels(ctx, items.map(i => i.label), pts.map(p => p.x), W, H, pad, slot);
+}
+
+function drawPieChart() {
+  const { canvas, ctx, W, H } = setupCanvas('pieCanvas');
+  const sorted = [...analysisData.stations].sort((a, b) => b.weight - a.weight);
+  const top = sorted.slice(0, 8);
+  const othersSum = sorted.slice(8).reduce((s, st) => s + st.weight, 0);
+  const data = top.map(s => ({ name: s.name, weight: s.weight }));
+  if (othersSum > 1e-9) data.push({ name: `Others (${sorted.length - 8} stations)`, weight: othersSum });
+  const total = data.reduce((t, d) => t + d.weight, 0) || 1;
+
+  const cx = W * 0.32, cy = H / 2 + 14, R = Math.min(W * 0.28, H * 0.36);
+  chartTitle(ctx, W, 'Station Contribution (Thiessen Weights)');
+  let a0 = -Math.PI / 2;
+  data.forEach((d, i) => {
+    const ang = (d.weight / total) * Math.PI * 2, mid = a0 + ang / 2;
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, R, a0, a0 + ang); ctx.closePath();
+    ctx.fillStyle = CHART_COLORS[i % CHART_COLORS.length]; ctx.fill();
+    ctx.strokeStyle = '#0A1628'; ctx.lineWidth = 2; ctx.stroke();
+    if (d.weight / total > 0.04) {
+      ctx.fillStyle = '#0A1628'; ctx.font = `bold 13px ${FONT}`; ctx.textAlign = 'center';
+      ctx.fillText((d.weight / total * 100).toFixed(1) + '%', cx + Math.cos(mid) * R * 0.66, cy + Math.sin(mid) * R * 0.66 + 4);
+    }
+    // hover wedge data
+    canvas._hits.push({ pie: true, cx, cy, R, a0, a1: a0 + ang, text: `${d.name}: ${(d.weight / total * 100).toFixed(2)}%` });
+    a0 += ang;
+  });
+  const lx = W * 0.62, ly = Math.max(60, H / 2 - data.length * 17);
+  ctx.textAlign = 'left';
+  data.forEach((d, i) => {
+    const y = ly + i * 34;
+    ctx.fillStyle = CHART_COLORS[i % CHART_COLORS.length]; ctx.fillRect(lx, y, 18, 18);
+    ctx.fillStyle = '#E2E8F0'; ctx.font = `14px ${FONT}`;
+    const nm = d.name.length > 22 ? d.name.slice(0, 20) + '…' : d.name;
+    ctx.fillText(`${nm} — ${(d.weight / total * 100).toFixed(1)}%`, lx + 28, y + 14);
+  });
+}
+
+function drawAllCharts() {
+  const a = analysisData, n = a.stations.length;
+  const LIMIT = 40;
+  let view = a.stations, note = '';
+  if (n > LIMIT) { view = [...a.stations].sort((x, y) => y.rainfall - x.rainfall).slice(0, LIMIT); note = `Showing the ${LIMIT} highest-rainfall stations of ${n}. The Excel export contains all ${n}.`; }
+  let viewW = a.stations, noteW = '';
+  if (n > LIMIT) { viewW = [...a.stations].sort((x, y) => y.weight - x.weight).slice(0, LIMIT); noteW = `Showing the ${LIMIT} largest-weight stations of ${n}.`; }
+  let viewC = a.stations, noteC = '';
+  if (n > LIMIT) { viewC = [...a.stations].sort((x, y) => y.contribution - x.contribution).slice(0, LIMIT); noteC = `Showing the ${LIMIT} largest contributions of ${n}.`; }
+
+  drawPieChart();
+  drawBars('barCanvas', view.map(s => ({ label: s.name, value: s.rainfall, tip: `${s.name}: ${fmt(s.rainfall)} mm` })), {
+    title: 'Rainfall at Each Station (mm)', yLabel: 'Rainfall (mm)', color: '#38BDF8', note,
+    lines: [{ value: a.thiessenAvg, label: 'Thiessen', color: '#EF4444' }, { value: a.arithmeticAvg, label: 'Arithmetic', color: '#F59E0B', dash: true }]
+  });
+  drawBars('contribCanvas', viewC.map(s => ({ label: s.name, value: s.contribution, tip: `${s.name}: ${fmt(s.contribution)} mm (Wi × Pi)` })), {
+    title: 'Contribution of Each Station (Wi × Pi)', yLabel: 'Contribution (mm)', color: '#10B981', note: noteC
+  });
+  drawBars('weightCanvas', viewW.map(s => ({ label: s.name, value: s.weight, tip: `${s.name}: Wi = ${s.weight.toFixed(4)} (${(s.weight * 100).toFixed(2)}%)` })), {
+    title: 'Thiessen Weight per Station', yLabel: 'Weight (%)', color: '#6366F1', valFmt: v => (v * 100).toFixed(v * 100 < 10 ? 1 : 0) + '%', note: noteW
+  });
+  let cum = 0;
+  const cumItems = (n > LIMIT ? [...a.stations].sort((x, y) => y.weight - x.weight).slice(0, LIMIT) : a.stations).map(s => ({ label: s.name, value: (cum += s.weight) }));
+  drawLineChart('cumCanvas', cumItems, { title: n > LIMIT ? 'Cumulative Weight (largest first)' : 'Cumulative Weight Curve', yLabel: 'Cumulative weight', max: 1, valFmt: v => (v * 100).toFixed(0) + '%', color: '#A78BFA' });
+  drawBars('cmpCanvas', [
+    { label: 'Thiessen', value: a.thiessenAvg, color: '#38BDF8', tip: `Thiessen average: ${fmt(a.thiessenAvg)} mm` },
+    { label: 'Arithmetic', value: a.arithmeticAvg, color: '#F59E0B', tip: `Arithmetic mean: ${fmt(a.arithmeticAvg)} mm` }
+  ], { title: 'Method Comparison', yLabel: 'Basin rainfall (mm)' });
+}
+
+/* tooltips for all charts */
+(function initTooltips() {
+  const tip = document.getElementById('chartTip');
+  document.addEventListener('mousemove', (e) => {
+    const c = e.target;
+    if (!c || !c.classList || !c.classList.contains('chart-canvas') || !c._hits) { tip.style.opacity = 0; return; }
+    const r = c.getBoundingClientRect();
+    const sx = c.dataset.w / r.width;
+    const x = (e.clientX - r.left) * sx, y = (e.clientY - r.top) * sx;
+    let hit = null;
+    for (const h of c._hits) {
+      if (h.pie) {
+        const dx = x - h.cx, dy = y - h.cy, d = Math.hypot(dx, dy);
+        if (d <= h.R) { let ang = Math.atan2(dy, dx); while (ang < h.a0) ang += Math.PI * 2; if (ang <= h.a1) { hit = h; break; } }
+      } else if (x >= h.x && x <= h.x + h.w && y >= h.y && y <= h.y + h.h) { hit = h; break; }
+    }
+    if (hit) {
+      tip.textContent = hit.text; tip.style.opacity = 1;
+      tip.style.left = Math.min(e.clientX + 16, window.innerWidth - 240) + 'px';
+      tip.style.top = (e.clientY + 16) + 'px';
+    } else tip.style.opacity = 0;
+  });
+})();
+
+function downloadChart(id, name) {
+  const c = document.getElementById(id);
+  c.toBlob(b => { if (b) downloadBlob(b, `${name}_${stamp()}.png`); else toast('Could not export chart.', 'err'); }, 'image/png');
+}
+function downloadAllCharts() {
+  if (!analysisData) return;
+  const list = [['pieCanvas', 'pie_station_contribution'], ['barCanvas', 'bar_rainfall_per_station'], ['contribCanvas', 'bar_contribution'], ['weightCanvas', 'bar_weights'], ['cumCanvas', 'line_cumulative_weight'], ['cmpCanvas', 'bar_method_comparison']];
+  list.forEach(([id, nm], i) => setTimeout(() => downloadChart(id, nm), i * 350));
+  toast('Downloading 6 chart images…');
+}
+
+/* ═══ EXPORTS ═══ */
+
+/* ═══ MINIMAL XLSX WRITER (no dependencies) — native Excel charts ═══ */
+const XLSXW = (function () {
+  const enc = new TextEncoder();
+  const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+  /* CRC32 */
+  const crcTable = (() => { const t = new Uint32Array(256); for (let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++) c = c&1 ? 0xEDB88320 ^ (c>>>1) : c>>>1; t[n]=c>>>0; } return t; })();
+  function crc32(b){ let c=0xFFFFFFFF; for(let i=0;i<b.length;i++) c = crcTable[(c^b[i])&0xFF]^(c>>>8); return (c^0xFFFFFFFF)>>>0; }
+
+  /* ZIP (stored, no compression) */
+  function zip(files) {
+    const chunks = [], central = []; let offset = 0;
+    const u16 = v => [v&255,(v>>8)&255], u32 = v => [v&255,(v>>8)&255,(v>>16)&255,(v>>>24)&255];
+    files.forEach(f => {
+      const name = enc.encode(f.name), data = enc.encode(f.data), crc = crc32(data);
+      const local = new Uint8Array([0x50,0x4b,3,4, ...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(0x21),
+        ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(name.length), ...u16(0)]);
+      chunks.push(local, name, data);
+      central.push({ name, crc, size: data.length, offset });
+      offset += local.length + name.length + data.length;
+    });
+    const cdStart = offset;
+    central.forEach(c => {
+      const h = new Uint8Array([0x50,0x4b,1,2, ...u16(20), ...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(0x21),
+        ...u32(c.crc), ...u32(c.size), ...u32(c.size), ...u16(c.name.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(c.offset)]);
+      chunks.push(h, c.name); offset += h.length + c.name.length;
+    });
+    const end = new Uint8Array([0x50,0x4b,5,6, ...u16(0), ...u16(0), ...u16(central.length), ...u16(central.length),
+      ...u32(offset - cdStart), ...u32(cdStart), ...u16(0)]);
+    chunks.push(end);
+    return new Blob(chunks, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  }
+
+  const colName = i => { let s=''; i++; while(i>0){ const m=(i-1)%26; s=String.fromCharCode(65+m)+s; i=Math.floor((i-1)/26);} return s; };
+  const ref = (c, r) => colName(c) + (r + 1);
+
+  /* Sheet builder: cells = {r,c,v,f,s,t} ; style ids: 0 normal,1 header,2 title,3 num2,4 num4,5 pct,6 bold,7 note */
+  function sheetXml(cells, opts) {
+    opts = opts || {};
+    const rows = {};
+    cells.forEach(x => { (rows[x.r] = rows[x.r] || []).push(x); });
+    let maxC = 0, maxR = 0;
+    cells.forEach(x => { if (x.c > maxC) maxC = x.c; if (x.r > maxR) maxR = x.r; });
+    let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">';
+    xml += `<dimension ref="A1:${ref(maxC, maxR)}"/>`;
+    xml += '<sheetViews><sheetView workbookViewId="0"' + (opts.showGrid === false ? ' showGridLines="0"' : '') + (opts.first ? ' tabSelected="1"' : '') + '>' +
+           (opts.freeze ? `<pane ySplit="${opts.freeze}" topLeftCell="A${opts.freeze+1}" activePane="bottomLeft" state="frozen"/>` : '') + '</sheetView></sheetViews>';
+    xml += '<sheetFormatPr defaultRowHeight="15"/>';
+    if (opts.cols) xml += '<cols>' + opts.cols.map((w,i) => `<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join('') + '</cols>';
+    xml += '<sheetData>';
+    Object.keys(rows).map(Number).sort((a,b)=>a-b).forEach(r => {
+      xml += `<row r="${r+1}">`;
+      rows[r].sort((a,b)=>a.c-b.c).forEach(x => {
+        const a = ref(x.c, x.r), s = x.s ? ` s="${x.s}"` : '';
+        if (x.f !== undefined) {
+          const isStr = typeof x.v === 'string';
+          xml += `<c r="${a}"${s}${isStr ? ' t="str"' : ''}><f>${esc(x.f)}</f>${x.v !== undefined ? `<v>${isStr ? esc(x.v) : (isFinite(x.v) ? x.v : 0)}</v>` : ''}</c>`;
+        } else if (typeof x.v === 'number') {
+          xml += `<c r="${a}"${s}><v>${isFinite(x.v) ? x.v : 0}</v></c>`;
+        } else if (x.v === undefined || x.v === null || x.v === '') {
+          xml += `<c r="${a}"${s}/>`;
+        } else {
+          xml += `<c r="${a}"${s} t="inlineStr"><is><t xml:space="preserve">${esc(x.v)}</t></is></c>`;
+        }
+      });
+      xml += '</row>';
+    });
+    xml += '</sheetData>';
+    if (opts.merges && opts.merges.length) xml += `<mergeCells count="${opts.merges.length}">` + opts.merges.map(m => `<mergeCell ref="${m}"/>`).join('') + '</mergeCells>';
+    xml += '<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>';
+    if (opts.drawing) xml += '<drawing r:id="rId1"/>';
+    return xml + '</worksheet>';
+  }
+
+  const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<numFmts count="2"><numFmt numFmtId="164" formatCode="0.00"/><numFmt numFmtId="165" formatCode="0.0000"/></numFmts>
+<fonts count="5">
+<font><sz val="11"/><name val="Calibri"/></font>
+<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>
+<font><b/><sz val="16"/><color rgb="FF0C4A6E"/><name val="Calibri"/></font>
+<font><b/><sz val="11"/><name val="Calibri"/></font>
+<font><i/><sz val="10"/><color rgb="FF64748B"/><name val="Calibri"/></font>
+</fonts>
+<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FF0369A1"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFE0F2FE"/><bgColor indexed="64"/></patternFill></fill></fills>
+<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>
+<border><left style="thin"><color rgb="FFBAE6FD"/></left><right style="thin"><color rgb="FFBAE6FD"/></right><top style="thin"><color rgb="FFBAE6FD"/></top><bottom style="thin"><color rgb="FFBAE6FD"/></bottom><diagonal/></border></borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="10">
+<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+<xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1"/>
+<xf numFmtId="165" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1"/>
+<xf numFmtId="10" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1"/>
+<xf numFmtId="0" fontId="3" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>
+<xf numFmtId="0" fontId="4" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"/>
+<xf numFmtId="164" fontId="3" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/>
+</cellXfs>
+<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>`;
+
+  /* ── chart XML helpers ── */
+  const PALETTE = ['0EA5E9','22D3EE','6366F1','A78BFA','F59E0B','10B981','EF4444','8B5CF6','EC4899','14B8A6'];
+  const C_NS = 'xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+  const strRef = (f, vals) => `<c:strRef><c:f>${esc(f)}</c:f><c:strCache><c:ptCount val="${vals.length}"/>${vals.map((v,i)=>`<c:pt idx="${i}"><c:v>${esc(v)}</c:v></c:pt>`).join('')}</c:strCache></c:strRef>`;
+  const numRef = (f, vals, fmt) => `<c:numRef><c:f>${esc(f)}</c:f><c:numCache><c:formatCode>${fmt||'General'}</c:formatCode><c:ptCount val="${vals.length}"/>${vals.map((v,i)=>`<c:pt idx="${i}"><c:v>${isFinite(v)?v:0}</c:v></c:pt>`).join('')}</c:numCache></c:numRef>`;
+  const txt = (t, sz, bold) => `<c:tx><c:rich><a:bodyPr/><a:p><a:pPr><a:defRPr sz="${sz}" b="${bold?1:0}"/></a:pPr><a:r><a:rPr lang="en-US" sz="${sz}" b="${bold?1:0}"/><a:t>${esc(t)}</a:t></a:r></a:p></c:rich></c:tx>`;
+  const titleXml = t => `<c:title>${txt(t,1400,true)}<c:overlay val="0"/></c:title><c:autoTitleDeleted val="0"/>`;
+  const axTitle = t => t ? `<c:title>${txt(t,1000,false)}<c:overlay val="0"/></c:title>` : '';
+  const solid = c => `<c:spPr><a:solidFill><a:srgbClr val="${c}"/></a:solidFill></c:spPr>`;
+  const lineSp = (c, w, dash) => `<c:spPr><a:ln w="${w}" cap="rnd"><a:solidFill><a:srgbClr val="${c}"/></a:solidFill>${dash?'<a:prstDash val="dash"/>':''}<a:round/></a:ln></c:spPr>`;
+
+  function axes(catTitle, valTitle, rotate, valFmt, valMax) {
+    const rot = rotate ? '<c:txPr><a:bodyPr rot="-2700000" vert="horz"/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="900"/></a:pPr><a:endParaRPr lang="en-US"/></a:p></c:txPr>' : '';
+    return `<c:catAx><c:axId val="111"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/>${axTitle(catTitle)}<c:numFmt formatCode="General" sourceLinked="0"/><c:majorTickMark val="out"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/>${rot}<c:crossAx val="222"/><c:crosses val="autoZero"/><c:auto val="1"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/><c:noMultiLvlLbl val="0"/></c:catAx>` +
+      `<c:valAx><c:axId val="222"/><c:scaling><c:orientation val="minMax"/>${valMax?`<c:max val="${valMax}"/>`:''}<c:min val="0"/></c:scaling><c:delete val="0"/><c:axPos val="l"/><c:majorGridlines><c:spPr><a:ln w="6350"><a:solidFill><a:srgbClr val="E2E8F0"/></a:solidFill></a:ln></c:spPr></c:majorGridlines>${axTitle(valTitle)}<c:numFmt formatCode="${valFmt||'General'}" sourceLinked="0"/><c:majorTickMark val="out"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:crossAx val="111"/><c:crosses val="autoZero"/><c:crossBetween val="between"/></c:valAx>`;
+  }
+
+  function wrapChart(title, plot, legend) {
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><c:chartSpace ${C_NS}><c:roundedCorners val="0"/><c:chart>${titleXml(title)}<c:plotArea><c:layout/>${plot}</c:plotArea>${legend?`<c:legend><c:legendPos val="${legend}"/><c:overlay val="0"/></c:legend>`:''}<c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart><c:spPr><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:ln w="9525"><a:solidFill><a:srgbClr val="BAE6FD"/></a:solidFill></a:ln></c:spPr></c:chartSpace>`;
+  }
+
+  /* chart builders. spec: {type, title, cat:{f,vals}, series:[{name, f, vals, color, kind:'bar'|'line', dash, fmt}], catTitle, valTitle, valFmt} */
+  function buildChart(spec) {
+    if (spec.type === 'pie') {
+      const s = spec.series[0];
+      const dpts = spec.cat.vals.map((_, i) => `<c:dPt><c:idx val="${i}"/><c:bubble3D val="0"/>${solid(PALETTE[i % PALETTE.length])}</c:dPt>`).join('');
+      const plot = `<c:pieChart><c:varyColors val="1"/><c:ser><c:idx val="0"/><c:order val="0"/><c:tx><c:v>${esc(s.name)}</c:v></c:tx>${dpts}<c:dLbls><c:numFmt formatCode="0.0%" sourceLinked="0"/><c:spPr><a:noFill/></c:spPr><c:showLegendKey val="0"/><c:showVal val="0"/><c:showCatName val="0"/><c:showSerName val="0"/><c:showPercent val="1"/><c:showBubbleSize val="0"/><c:showLeaderLines val="1"/></c:dLbls><c:cat>${strRef(spec.cat.f, spec.cat.vals)}</c:cat><c:val>${numRef(s.f, s.vals, '0.0000')}</c:val></c:ser><c:firstSliceAng val="0"/></c:pieChart>`;
+      return wrapChart(spec.title, plot, 'r');
+    }
+    const bars = spec.series.filter(s => s.kind !== 'line'), lines = spec.series.filter(s => s.kind === 'line');
+    const serXml = (s, i, isLine) => {
+      const col = s.color || PALETTE[i % PALETTE.length];
+      return `<c:ser><c:idx val="${i}"/><c:order val="${i}"/><c:tx><c:v>${esc(s.name)}</c:v></c:tx>` +
+        (isLine ? lineSp(col, s.dash ? 28575 : 31750, s.dash) + `<c:marker><c:symbol val="${s.marker?'circle':'none'}"/>${s.marker?`<c:size val="5"/>${solid(col)}`:''}</c:marker>`
+                : solid(col) + '<c:invertIfNegative val="0"/>') +
+        `<c:cat>${strRef(spec.cat.f, spec.cat.vals)}</c:cat><c:val>${numRef(s.f, s.vals, s.fmt || '0.00')}</c:val>${isLine?'<c:smooth val="0"/>':''}</c:ser>`;
+    };
+    let plot = '', idx = 0;
+    if (bars.length) plot += `<c:barChart><c:barDir val="col"/><c:grouping val="clustered"/><c:varyColors val="0"/>${bars.map(s => serXml(s, idx++, false)).join('')}<c:gapWidth val="60"/><c:axId val="111"/><c:axId val="222"/></c:barChart>`;
+    if (lines.length) plot += `<c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>${lines.map(s => serXml(s, idx++, true)).join('')}<c:marker val="1"/><c:axId val="111"/><c:axId val="222"/></c:lineChart>`;
+    plot += axes(spec.catTitle, spec.valTitle, spec.rotate, spec.valFmt, spec.valMax);
+    return wrapChart(spec.title, plot, spec.series.length > 1 ? 'b' : '');
+  }
+
+  /* anchors: chart i placed in grid, 2 per row */
+  function drawingXml(n, perRow, wCols, hRows) {
+    let x = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart">';
+    for (let i = 0; i < n; i++) {
+      const col = (i % perRow) * (wCols + 1), row = Math.floor(i / perRow) * (hRows + 2) + 3;
+      x += `<xdr:twoCellAnchor><xdr:from><xdr:col>${col}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${row}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:to><xdr:col>${col + wCols}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${row + hRows}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>` +
+        `<xdr:graphicFrame macro=""><xdr:nvGraphicFramePr><xdr:cNvPr id="${i + 2}" name="Chart ${i + 1}"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr><xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart r:id="rId${i + 1}"/></a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/></xdr:twoCellAnchor>`;
+    }
+    return x + '</xdr:wsDr>';
+  }
+
+  /* sheets: [{name, cells, opts}] ; charts: [spec] attached to sheet index chartSheet */
+  function build(sheets, charts, chartSheetIdx) {
+    const files = [];
+    const ct = ['<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'];
+    sheets.forEach((s, i) => ct.push(`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`));
+    if (charts.length) {
+      ct.push('<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>');
+      charts.forEach((_, i) => ct.push(`<Override PartName="/xl/charts/chart${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>`));
+    }
+    ct.push('</Types>');
+    files.push({ name: '[Content_Types].xml', data: ct.join('') });
+    files.push({ name: '_rels/.rels', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>' });
+    files.push({ name: 'xl/workbook.xml', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView activeTab="0"/></bookViews><sheets>' + sheets.map((s, i) => `<sheet name="${esc(s.name)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join('') + '</sheets><calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>' });
+    files.push({ name: 'xl/_rels/workbook.xml.rels', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' + sheets.map((s, i) => `<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join('') + `<Relationship Id="rId${sheets.length+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>` });
+    files.push({ name: 'xl/styles.xml', data: stylesXml });
+    sheets.forEach((s, i) => {
+      const hasDrawing = charts.length && i === chartSheetIdx;
+      files.push({ name: `xl/worksheets/sheet${i+1}.xml`, data: sheetXml(s.cells, Object.assign({}, s.opts, { drawing: hasDrawing, first: i === 0 })) });
+      if (hasDrawing) files.push({ name: `xl/worksheets/_rels/sheet${i+1}.xml.rels`, data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/></Relationships>' });
+    });
+    if (charts.length) {
+      files.push({ name: 'xl/drawings/drawing1.xml', data: drawingXml(charts.length, 2, 9, 22) });
+      files.push({ name: 'xl/drawings/_rels/drawing1.xml.rels', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' + charts.map((_, i) => `<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart${i+1}.xml"/>`).join('') + '</Relationships>' });
+      charts.forEach((c, i) => files.push({ name: `xl/charts/chart${i+1}.xml`, data: buildChart(c) }));
+    }
+    return zip(files);
+  }
+
+  return { build, colName, ref };
+})();
+
+/* ═══ EXCEL EXPORT (data + live formulas + native charts) ═══ */
+function buildExcelBlob(a) {
+  const clean = s => String(s).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
+  const st = a.stations, n = st.length;
+  const first = 2, last = n + 1, tot = n + 2;           // Excel row numbers on Data sheet
+  const cells = [];
+  const put = (r, c, v, s, f) => cells.push({ r, c, v, s, f });
+  const rngAbs = (col) => `Data!$${col}$${first}:$${col}$${last}`;
+
+  /* ---- Data sheet ---- */
+  const H = ['#', 'Station', 'Rainfall (mm)', a.useEqualWeights ? 'Input Weight (equal = 1)' : 'Input Weight / Area', 'Normalised Weight (Wi)', 'Contribution Wi × Pi (mm)', 'Cumulative Weight', 'Thiessen Average (mm)', 'Arithmetic Mean (mm)'];
+  H.forEach((h, i) => put(0, i, h, 1));
+  let cum = 0;
+  st.forEach((s, i) => {
+    const r = i + 1, x = r + 1;
+    cum += s.weight;
+    put(r, 0, i + 1, 8);
+    put(r, 1, clean(s.name), 8);
+    put(r, 2, s.rainfall, 3);
+    put(r, 3, a.useEqualWeights ? 1 : s.rawWeight, 4);
+    put(r, 4, s.weight, 4, `D${x}/SUM($D$${first}:$D$${last})`);
+    put(r, 5, s.contribution, 3, `C${x}*E${x}`);
+    put(r, 6, cum, 5, `SUM($E$${first}:E${x})`);
+    put(r, 7, a.thiessenAvg, 3, `$F$${tot}`);
+    put(r, 8, a.arithmeticAvg, 3, `AVERAGE($C$${first}:$C$${last})`);
+  });
+  put(n + 1, 0, '', 6); put(n + 1, 1, 'TOTAL / BASIN', 6);
+  put(n + 1, 2, '', 6);
+  put(n + 1, 3, st.reduce((t, s) => t + (a.useEqualWeights ? 1 : s.rawWeight), 0), 9, `SUM(D${first}:D${last})`);
+  put(n + 1, 4, 1, 9, `SUM(E${first}:E${last})`);
+  put(n + 1, 5, a.thiessenAvg, 9, `SUM(F${first}:F${last})`);
+  put(n + 1, 6, '', 6); put(n + 1, 7, '', 6); put(n + 1, 8, '', 6);
+  if (a.useEqualWeights) put(n + 3, 1, 'Note: no weights were provided, so equal weights were used.', 7);
+
+  /* pie helper table (top 8 by weight + Others) */
+  const order = st.map((s, i) => i).sort((p, q) => st[q].weight - st[p].weight);
+  const topIdx = order.slice(0, 8);
+  put(0, 10, 'Pie: Station', 1); put(0, 11, 'Pie: Weight', 1);
+  const pieNames = [], pieVals = [];
+  topIdx.forEach((si, k) => {
+    put(k + 1, 10, clean(st[si].name), 8);
+    put(k + 1, 11, st[si].weight, 4, `E${si + 2}`);
+    pieNames.push(clean(st[si].name)); pieVals.push(st[si].weight);
+  });
+  if (n > 8) {
+    const k = topIdx.length;
+    const o = 1 - topIdx.reduce((t, si) => t + st[si].weight, 0);
+    put(k + 1, 10, 'Others', 8);
+    put(k + 1, 11, Math.max(0, o), 4, `MAX(0,1-SUM(L2:L${k + 1}))`);
+    pieNames.push('Others'); pieVals.push(Math.max(0, o));
+  }
+  const pieLast = pieNames.length + 1;
+
+  /* ---- Summary sheet ---- */
+  const sum = [];
+  const sp = (r, c, v, s, f) => sum.push({ r, c, v, s, f });
+  sp(0, 0, 'Basin-Wide Rainfall — Thiessen Polygon Analysis', 2);
+  sp(1, 0, 'Generated: ' + new Date().toLocaleString() + '  ·  Developed by Junaid Ali', 7);
+  sp(2, 0, 'Metric', 1); sp(2, 1, 'Value', 1); sp(2, 2, 'Unit', 1);
+  const rows = [
+    ['Thiessen Average', a.thiessenAvg, `Data!F${tot}`, 'mm'],
+    ['Arithmetic Mean', a.arithmeticAvg, `AVERAGE(${rngAbs('C')})`, 'mm'],
+    ['Difference', Math.abs(a.thiessenAvg - a.arithmeticAvg), 'ABS(B4-B5)', 'mm'],
+    ['Difference (% of arithmetic)', a.arithmeticAvg ? Math.abs(a.thiessenAvg - a.arithmeticAvg) / a.arithmeticAvg * 100 : 0, 'IF(B5=0,0,B6/B5*100)', '%'],
+    ['Number of stations', n, `COUNTA(${rngAbs('B')})`, ''],
+    ['Maximum rainfall', a.maxRain, `MAX(${rngAbs('C')})`, 'mm'],
+    ['Minimum rainfall', a.minRain, `MIN(${rngAbs('C')})`, 'mm'],
+    ['Sum of normalised weights', 1, `Data!E${tot}`, '']
+  ];
+  rows.forEach((r, i) => { sp(3 + i, 0, r[0], 6); sp(3 + i, 1, r[1], 3, r[2]); sp(3 + i, 2, r[3], 8); });
+  sp(12, 0, 'Formula:  P̄ = Σ (Wi × Pi)    where Wi = area weight of station i (normalised so ΣWi = 1) and Pi = rainfall at station i.', 7);
+  if (a.useEqualWeights) sp(13, 0, 'Warning: weights were not provided — equal weights used.', 7);
+  sp(15, 0, 'All values on the Data sheet are live Excel formulas — edit rainfall or weights and the charts update automatically.', 7);
+
+  /* ---- Charts ---- */
+  const cat = { f: rngAbs('B'), vals: st.map(s => clean(s.name)) };
+  const rot = n > 8;
+  const charts = [
+    { type: 'pie', title: 'Station Contribution (Thiessen Weights)', cat: { f: `Data!$K$2:$K$${pieLast}`, vals: pieNames }, series: [{ name: 'Weight', f: `Data!$L$2:$L$${pieLast}`, vals: pieVals }] },
+    { title: 'Rainfall per Station vs Basin Averages', cat, rotate: rot, catTitle: 'Station', valTitle: 'Rainfall (mm)',
+      series: [
+        { name: 'Rainfall (mm)', f: rngAbs('C'), vals: st.map(s => s.rainfall), color: '0EA5E9' },
+        { name: 'Thiessen Average', f: rngAbs('H'), vals: st.map(() => a.thiessenAvg), kind: 'line', color: 'EF4444' },
+        { name: 'Arithmetic Mean', f: rngAbs('I'), vals: st.map(() => a.arithmeticAvg), kind: 'line', color: 'F59E0B', dash: true }
+      ] },
+    { title: 'Contribution of Each Station (Wi × Pi)', cat, rotate: rot, catTitle: 'Station', valTitle: 'Contribution (mm)',
+      series: [{ name: 'Contribution (mm)', f: rngAbs('F'), vals: st.map(s => s.contribution), color: '10B981' }] },
+    { title: 'Normalised Weight per Station', cat, rotate: rot, catTitle: 'Station', valTitle: 'Weight (Wi)', valFmt: '0%',
+      series: [{ name: 'Weight', f: rngAbs('E'), vals: st.map(s => s.weight), color: '6366F1', fmt: '0.0000' }] },
+    { title: 'Cumulative Weight Curve', cat, rotate: rot, catTitle: 'Station', valTitle: 'Cumulative weight', valFmt: '0%', valMax: 1,
+      series: [{ name: 'Cumulative weight', f: rngAbs('G'), vals: (() => { let c = 0; return st.map(s => (c += s.weight)); })(), kind: 'line', marker: true, color: 'A78BFA', fmt: '0.0000' }] },
+    { title: 'Method Comparison: Thiessen vs Arithmetic', cat: { f: 'Summary!$A$4:$A$5', vals: ['Thiessen Average', 'Arithmetic Mean'] }, catTitle: '', valTitle: 'Basin rainfall (mm)',
+      series: [{ name: 'Average rainfall (mm)', f: 'Summary!$B$4:$B$5', vals: [a.thiessenAvg, a.arithmeticAvg], color: '0EA5E9' }] }
+  ];
+  const chartSheet = [{ r: 0, c: 0, v: 'Charts — all graphs are native Excel charts (click any chart to edit, restyle or copy into Word / PowerPoint)', s: 2 }];
+
+  const blob = XLSXW.build([
+    { name: 'Summary', cells: sum, opts: { cols: [34, 18, 10], showGrid: false } },
+    { name: 'Data', cells, opts: { cols: [6, 24, 16, 22, 22, 24, 18, 20, 20, 3, 18, 14], freeze: 1 } },
+    { name: 'Charts', cells: chartSheet, opts: { showGrid: false } }
+  ], charts, 2);
+  return blob;
+}
+
+
+function saveResults() {
+  if (!analysisData) return;
+  const a = analysisData;
+  let out = '═══════════════════════════════════════════\n';
+  out += '  BASIN-WIDE RAINFALL ANALYSIS\n';
+  out += '  Thiessen Polygon Method\n';
+  out += '═══════════════════════════════════════════\n\n';
+  out += `Generated: ${new Date().toLocaleString()}\n`;
+  out += `Total Stations: ${a.totalStations}\n\n`;
+  out += `Thiessen Basin Average: ${fmt(a.thiessenAvg)} mm\n`;
+  out += `Arithmetic Mean: ${fmt(a.arithmeticAvg)} mm\n`;
+  out += `Rainfall Range: ${fmt(a.minRain)} – ${fmt(a.maxRain)} mm\n`;
+  if (a.useEqualWeights) out += 'NOTE: weights not provided — equal weights used.\n';
+  out += '\nStation | Rainfall (mm) | Weight | Contribution (mm)\n';
+  a.stations.forEach(s => { out += `${s.name} | ${fmt(s.rainfall)} | ${s.weight.toFixed(4)} | ${fmt(s.contribution)}\n`; });
+  out += '\nDeveloped by Junaid Ali · Civil Engineering Research\n';
+  downloadBlob(new Blob([out], { type: 'text/plain;charset=utf-8' }), `basin_rainfall_${stamp()}.txt`);
+  toast('Report saved (TXT).');
+}
+
+function saveCSV() {
+  if (!analysisData) return;
+  const q = s => '"' + String(s).replace(/"/g, '""') + '"';
+  let out = 'station,rainfall_mm,input_weight,normalised_weight,contribution_mm\n';
+  analysisData.stations.forEach(s => {
+    out += `${q(s.name)},${s.rainfall},${s.rawWeight},${s.weight.toFixed(6)},${s.contribution.toFixed(4)}\n`;
+  });
+  out += `${q('THIESSEN AVERAGE')},,,,${analysisData.thiessenAvg.toFixed(4)}\n`;
+  downloadBlob(new Blob(['\uFEFF' + out], { type: 'text/csv;charset=utf-8' }), `basin_data_${stamp()}.csv`);
+  toast('CSV saved.');
+}
+
+function saveExcel() {
+  if (!analysisData) return;
+  try {
+    const blob = buildExcelBlob(analysisData);
+    downloadBlob(blob, `basin_rainfall_${stamp()}.xlsx`);
+    toast('Excel saved — 3 sheets (Summary, Data, Charts) with 6 native charts.');
+  } catch (err) {
+    console.error(err);
+    toast('Excel export failed: ' + err.message, 'err');
+  }
+}
+
+/* ═══ INIT ═══ */
+renderStations();
+
+</script>
+
+</body>
+</html>
